@@ -1,0 +1,10 @@
+*.pyc
+*.egg-info
+build
+dist
+packaging/deb
+packaging/msi
+packaging/build
+packaging/licence.rtf
+.DS_Store
+_version.py
