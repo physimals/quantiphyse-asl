@@ -166,7 +166,6 @@ def create_msi(name, distdir, pkgdir, version_str, version_str_display=None):
     msi_fname = os.path.join(msidir, "%s-%s.msi" % (name, version_str_display))
     create_wxs(name, distdir, version_str, wxs_fname)
     
-    os.system('"%s/candle.exe" %s -out %s' % (WIXDIR, wxs_fname, obj_fname))
-    print(msi_fname)
-    os.system('"%s/light.exe" %s -out %s -ext WixUIExtension' % (WIXDIR, obj_fname, msi_fname))
+    os.system('"%s/candle.exe" %s -out %s >>msi.out 2>&1' % (WIXDIR, wxs_fname, obj_fname))
+    os.system('"%s/light.exe" %s -out %s -ext WixUIExtension >>msi.out 2>&1' % (WIXDIR, obj_fname, msi_fname))
     shutil.move(msi_fname, distdir)
