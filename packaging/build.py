@@ -67,7 +67,7 @@ elif sys.platform.startswith("darwin"):
 shutil.rmtree("%s/dist" % rootdir, ignore_errors=True)
 v = update_version(package_name, rootdir)
 print("Version updated to %s" % v[0])
-version_string_display = version_str = v[1]
+version_str_display = version_str = v[1]
 if "snapshot" in sys.argv:
     version_str_display = "snapshot"
 
