@@ -64,7 +64,7 @@ elif sys.platform.startswith("darwin"):
     import create_dmg
     build_platform_package = create_dmg.create_dmg
 
-os.system("rm -rf %s/dist" % rootdir)
+shutil.rmtree("%s/dist" % rootdir, ignore_errors=True)
 v = update_version(package_name, rootdir)
 print("Version updated to %s" % v[0])
 version_string_display = version_str = v[1]
