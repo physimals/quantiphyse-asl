@@ -23,16 +23,6 @@ from quantiphyse.utils import debug, warn, get_plugins
 from quantiphyse.utils.exceptions import QpException
 from quantiphyse.utils.batch import parse_batch
 
-def get_model_lib(name="asl"):
-    plugindir = os.path.abspath(os.path.dirname(__file__))
-    if sys.platform.startswith("win"):
-        template = "%s.dll"
-    elif sys.platform.startswith("darwin"):
-        template = "lib%s.dylib"
-    else:
-        template = "lib%s.so"
-    return os.path.join(plugindir, template % "fabber_models_%s" % name)
-
 class AslDataPreview(QtGui.QWidget):
     def __init__(self, order, tagfirst, multiphase=False, parent=None):
         QtGui.QWidget.__init__(self, parent)
@@ -418,7 +408,7 @@ class ASLWidget(QpWidget):
     def get_rundata(self):
         # General defaults
         self.rundata = {}
-        self.rundata["loadmodels"] = get_model_lib()
+        self.rundata["model-group"] = "asl"
         self.rundata["save-mean"] = ""
         self.rundata["save-model-fit"] = ""
         self.rundata["noise"] = "white"
