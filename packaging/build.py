@@ -67,8 +67,8 @@ elif sys.platform.startswith("darwin"):
 os.system("rm -rf %s/dist" % rootdir)
 v = update_version(package_name, rootdir)
 print("Version updated to %s" % v[0])
-version_string_display = version_str = v[1]
-if len(v[1].split("-", 1)) > 0:
+version_str_display = version_str = v[1]
+if "--snapshot" in sys.argv:
     version_str_display = "snapshot"
 
 print("Building plugin")
