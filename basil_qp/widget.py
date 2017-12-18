@@ -421,7 +421,7 @@ class ASLWidget(QpWidget):
     def get_rundata(self):
         # General defaults
         self.rundata = {}
-        self.rundata["loadmodels"] = get_model_lib()
+        self.rundata["model-group"] = "asl"
         self.rundata["save-mean"] = ""
         self.rundata["save-model-fit"] = ""
         self.rundata["noise"] = "white"
