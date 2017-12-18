@@ -11,14 +11,14 @@ desc = "Quantiphyse plugin for ASL"
 version = "0.0.1"
 
 # setup parameters
-setup(name='basil-qp',
+setup(name='qp-basil',
       cmdclass={},
       version=version,
       description=desc,
       long_description=desc,
       author='Michael Chappell, Martin Craig',
       author_email='martin.craig@eng.ox.ac.uk',
-      packages=['basil_qp'],
+      packages=['basil'],
       include_package_data=True,
       data_files=[],
       setup_requires=[],
