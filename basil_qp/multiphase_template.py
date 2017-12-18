@@ -4,6 +4,7 @@ Processing:
 
   # Initial biased run
   - Fabber:
+      loadmodels: %(loadmodels)s
       data-name: asl_multiphase_data
       method: spatialvb
       PSP_byname1: phase 
@@ -44,6 +45,7 @@ Processing:
       output-name: data_sv
 
   - Fabber:
+      loadmodels: %(loadmodels)s
       data: data_sv
       method: spatialvb
       PSP_byname1: phase
@@ -75,6 +77,7 @@ Processing:
       
   # Final run to fit mag and offset with fixed phase
   - Fabber:
+      loadmodels: %(loadmodels)s
       method: spatialvb
       PSP_byname1: phase 
       PSP_byname1_image: phase_prior_sv

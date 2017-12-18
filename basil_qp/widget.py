@@ -23,6 +23,8 @@ from quantiphyse.utils import debug, warn, get_plugins
 from quantiphyse.utils.exceptions import QpException
 from quantiphyse.utils.batch import parse_batch
 
+from ._version import __version__
+
 def get_model_lib(name="asl"):
     plugindir = os.path.abspath(os.path.dirname(__file__))
     if sys.platform.startswith("win"):
@@ -122,7 +124,7 @@ class ASLWidget(QpWidget):
             vbox.addWidget(QtGui.QLabel("Fabber core library not found.\n\n You must install Fabber to use this widget"))
             return
         
-        title = TitleWidget(self, help="asl", subtitle="Modelling for Arterial Spin Labelling MRI")
+        title = TitleWidget(self, help="asl", subtitle="Modelling for Arterial Spin Labelling MRI %s" % __version__)
         vbox.addWidget(title)
               
         cite = Citation(FAB_CITE_TITLE, FAB_CITE_AUTHOR, FAB_CITE_JOURNAL)
@@ -359,6 +361,7 @@ class ASLWidget(QpWidget):
         # Run Fabber on data
         # FIXME not finished
         options = {
+            "loadmodels" : get_model_lib(),
             "nphases" : nphases,
             "nrepeats" : nrepeats,
             "nsv" : 8,
@@ -371,11 +374,11 @@ class ASLWidget(QpWidget):
         if len(cases) != 1:
             raise RuntimeError("Cases not length 1")
         case = cases[0]
-        case.ivm = self.ivm # FIXME temp
+        #case.ivm = self.ivm # FIXME temp
         case.ivm.add_data(multiphasedata, "asl_multiphase_data")
         case.run()
-#        asldata = case.ivm.data["mean_phase"] # or whatever
-#        self.ivm.add_data(asldata, name="asldata", make_main=True)
+        asldata = case.ivm.data["mean_mag"]
+        self.ivm.add_data(asldata.std(), name="asldata", make_main=True)
 
     def preprocess(self):
         """
