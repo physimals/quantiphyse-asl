@@ -138,7 +138,7 @@ def add_apps_link(dmg_path):
         if path is not None:
             os.system('hdiutil detach "%s" -quiet' % path)
     
-def create_dmg(name, distdir, pkgdir, version_str, version_str_display=None):
+def create_dmg(name, plugin_name, distdir, pkgdir, version_str, version_str_display=None):
     if version_str_display == None:
         version_str_display = version_str
 

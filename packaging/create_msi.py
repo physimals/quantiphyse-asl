@@ -116,7 +116,7 @@ def add_files_in_dir(distdir, pkgdir, nfile, ndir, output, indent):
     output.write('%s</Directory>\n' % indent)
     return nfile, ndir
 
-def create_wxs(name, distdir, version_str, wxs_fname):
+def create_wxs(name, plugin_name, distdir, version_str, wxs_fname):
     """
     Create the WXS file for WIX toolset to create the MSI
     """
@@ -129,7 +129,7 @@ def create_wxs(name, distdir, version_str, wxs_fname):
     }
     
     output = StringIO()
-    nfile, ndir = add_files_in_dir(distdir, name, 1, 1, output, "  " * 8)
+    nfile, ndir = add_files_in_dir(distdir, plugin_name, 1, 1, output, "  " * 8)
     formatting_values["dist_files"] = output.getvalue()
 
     output = StringIO()
@@ -149,7 +149,7 @@ def convert_licence(txt_fname, rtf_fname):
     f.write(RTF_TEMPLATE % txt)
     f.close()
 
-def create_msi(name, distdir, pkgdir, version_str, version_str_display=None):
+def create_msi(name, plugin_name, distdir, pkgdir, version_str, version_str_display=None):
     """
     Create the MSI itself using WIX toolset
     """

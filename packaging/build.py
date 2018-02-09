@@ -44,10 +44,18 @@ def build_plugin(package_name, rootdir, distdir, platform):
     print("%s -> %s" % (LIB, packagedir))
     shutil.copy(LIB, packagedir)
 
+    # Copy ASL python libraries
+    aslmoddir = os.path.join(packagedir, "asl")
+    os.makedirs(aslmoddir)
+    for m in ["__init__.py", "fslwrap.py", "data.py"]:
+        modpath = os.path.join(fsldir, "python", "asl", m)
+        print("%s -> %s" % (modpath, aslmoddir))
+        shutil.copy(modpath, aslmoddir)
+
 pkgdir = os.path.abspath(os.path.dirname(__file__))
 rootdir = os.path.abspath(os.path.join(pkgdir, os.pardir))
 distdir = os.path.join(rootdir, "dist")
-package_name = "basil_qp"
+package_name = "basil"
 
 sys.path.append(rootdir)
 
@@ -73,4 +81,4 @@ if "--snapshot" in sys.argv:
 
 print("Building plugin")
 build_plugin(package_name, rootdir, distdir, platform)
-build_platform_package(package_name, distdir, pkgdir, v[1], version_str_display)
+build_platform_package("qp-" + package_name, package_name, distdir, pkgdir, v[1], version_str_display)

@@ -97,7 +97,7 @@ class AslDataPreview(QtGui.QWidget):
 #        p.begin()
         self.draw_groups(p, self.order, ox, oy, group_width, group_height)
  #       p.end()
-        
+
 FAB_CITE_TITLE = "Variational Bayesian inference for a non-linear forward model"
 FAB_CITE_AUTHOR = "Chappell MA, Groves AR, Whitcher B, Woolrich MW."
 FAB_CITE_JOURNAL = "IEEE Transactions on Signal Processing 57(1):223-236, 2009."

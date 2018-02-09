@@ -24,7 +24,7 @@ Version: %(version_str)s
 Description: %(name)s plugin for Quantiphyse
 """
 
-def create_deb(name, distdir, pkgdir, version_str, version_str_display=None):
+def create_deb(name, plugin_name, distdir, pkgdir, version_str, version_str_display=None):
     if version_str_display == None:
         version_str_display = version_str
 
@@ -42,8 +42,8 @@ def create_deb(name, distdir, pkgdir, version_str, version_str_display=None):
     pkgname = "%(name)s_%(version_str_display)s_%(arch)s" % formatting_values
     builddir = os.path.join(debdir, pkgname) 
 
-    installdir = os.path.join(builddir, INSTALL_PREFIX, "quantiphyse", "packages", "plugins", name)
-    shutil.copytree(os.path.join(distdir, name), installdir)
+    installdir = os.path.join(builddir, INSTALL_PREFIX, "quantiphyse", "packages", "plugins", plugin_name)
+    shutil.copytree(os.path.join(distdir, plugin_name), installdir)
     
     metadir = os.path.join(builddir, "DEBIAN")
     os.makedirs(metadir)
