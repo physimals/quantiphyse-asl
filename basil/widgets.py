@@ -17,7 +17,7 @@ import yaml
 import numpy as np
 from PySide import QtCore, QtGui
 
-from quantiphyse.gui.widgets import QpWidget, OverlayCombo, RoiCombo, Citation, TitleWidget, ChoiceOption, NumericOption, NumberList, LoadNumbers, OrderList, OrderListButtons, NumberGrid, RunBox
+from quantiphyse.gui.widgets import QpWidget, OverlayCombo, RoiCombo, Citation, TitleWidget, ChoiceOption, NumericOption, NumberList, LoadNumbers, OrderList, OrderListButtons, NumericGrid, RunBox, NumberGrid
 from quantiphyse.gui.dialogs import TextViewerDialog, error_dialog, GridEditDialog
 from quantiphyse.utils import debug, warn, text_to_matrix
 from quantiphyse.utils.exceptions import QpException
@@ -25,7 +25,7 @@ from quantiphyse.utils.exceptions import QpException
 from .process import AslDataProcess, AslPreprocProcess, BasilProcess
 
 from ._version import __version__
-from .asl.data import AslImage
+from .asl.image import AslImage
 
 ORDER_LABELS = {
     "r" : ("Repeat ", "R", "Repeats"), 
@@ -159,10 +159,10 @@ class AslStrucCheck(QtGui.QWidget):
                 self.setStyleSheet(
                     """QWidget { background-color: green; color: black; padding: 5px 5px 5px 5px;}""")
 
-class AslParamsGrid(NumberGrid):
+class AslParamsGrid(NumericGrid):
     def __init__(self, tis, rpts, taus):
         self.fixed_row_headers = ["Repeats", "Bolus durations"]
-        NumberGrid.__init__(self, [tis, rpts, taus], 
+        NumericGrid.__init__(self, [tis, rpts, taus], 
                             row_headers=["PLDs",] + self.fixed_row_headers,
                             expandable=(True, False), 
                             fix_height=True)
@@ -288,7 +288,6 @@ class AslDataWidget(QpWidget):
         order = self.struc["order"]
         idx = self.tc_combo.combo.currentIndex()
 
-        print("Contents combo: ", idx, order)
         chars = {0 : "p", 1 : "P", 2: "", 3: "m"}
         char = chars[idx]
         order = order.replace("p", char).replace("P", char).replace("m", char)
