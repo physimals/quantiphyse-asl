@@ -5,7 +5,7 @@ from quantiphyse.utils.exceptions import QpException
 
 from quantiphyse.analysis import BackgroundProcess, Process
 
-from .asl.data import AslImage
+from .asl.image import AslImage
 
 USE_CMDLINE = False
 
