@@ -164,7 +164,7 @@ def create_msi(name, plugin_name, distdir, pkgdir, version_str, version_str_disp
     wxs_fname = os.path.join(msidir, "%s.wxs" % name)
     obj_fname = os.path.join(msidir, "%s.wixobj" % name)
     msi_fname = os.path.join(msidir, "%s-%s.msi" % (name, version_str_display))
-    create_wxs(name, distdir, version_str, wxs_fname)
+    create_wxs(name, plugin_name, distdir, version_str, wxs_fname)
     
     os.system('"%s/candle.exe" %s -out %s >>msi.out 2>&1' % (WIXDIR, wxs_fname, obj_fname))
     os.system('"%s/light.exe" %s -out %s -ext WixUIExtension >>msi.out 2>&1' % (WIXDIR, obj_fname, msi_fname))
