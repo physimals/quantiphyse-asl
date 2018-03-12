@@ -146,14 +146,15 @@ def create_dmg(name, plugin_name, distdir, pkgdir, version_str, version_str_disp
     dmg_path = os.path.join(distdir, "%s-%s.dmg" % (name, version_str_display))
     formatting_values = {
         "name" : name,
+        "plugin_name" : plugin_name,
         "version_str" : version_str,
         "version_str_display" : version_str_display,
-        "bundle_dir" : os.path.join(distdir),
+        "bundle_dir" : os.path.join(distdir, plugin_name),
         "dmg_name" : dmg_path,
         "dmg_temp_path" : dmg_temp_path,
     }
 
-    os.system('hdiutil create -volname %(name)s -srcfolder %(bundle_dir)s -ov -quiet -format UDRW %(dmg_temp_path)s' % formatting_values)
+    os.system('hdiutil create -volname %(plugin_name)s -srcfolder %(bundle_dir)s -ov -quiet -format UDRW %(dmg_temp_path)s' % formatting_values)
     #license = os.path.join(pkgdir, os.pardir, "licence.md")
     add_apps_link(dmg_temp_path)
     #add_license(dmg_temp_path, license)
