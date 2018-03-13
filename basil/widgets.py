@@ -161,35 +161,55 @@ class AslStrucCheck(QtGui.QWidget):
 
 class AslParamsGrid(NumericGrid):
     def __init__(self, tis, rpts, taus):
-        self.fixed_row_headers = ["Repeats", "Bolus durations"]
+        self.fixed_repeats = True
+        self.casl = True
+        self.tau_header = "Bolus durations"
+        self.rpt_header = "Repeats"
         NumericGrid.__init__(self, [tis, rpts, taus], 
-                            row_headers=["PLDs",] + self.fixed_row_headers,
+                            row_headers=self.headers(),
                             expandable=(True, False), 
                             fix_height=True)
     
+    def set_fixed_repeats(self, fixed_repeats):
+        self.fixed_repeats = fixed_repeats
+        vals = self.values()
+        if fixed_repeats:
+            self.setValues(vals[:2], validate=False)
+        elif len(vals) == 2:
+            vals.append([0,] * len(vals[0]))
+            self.setValues(vals, validate=False, row_headers=self.headers())
+
     def set_labelling(self, casl):
-        if casl:
-            ti_txt = "PLDs"
-        else:
-            ti_txt = "TIs"
-        self.setVerticalHeaderLabels([ti_txt,] + self.fixed_row_headers)
-        self.setRowHidden(2, not casl)
+        self.casl = casl
+        self.setVerticalHeaderLabels(self.headers())
 
     def tis(self):
         return self.values()[0]
 
-    def rpts(self):
-        return [int(v) for v in self.values()[1]]
-
     def taus(self):
-        return self.values()[2]
+        return self.values()[1]
 
-class AslDataWidget(QpWidget):
+    def rpts(self):
+        if not self.fixed_repeats:
+            return self.values()[2]
+        else:
+            return None
+
+    def headers(self):
+        headers = []
+        if self.casl: headers.append("PLDs")
+        else: headers.append("TIs")
+        headers.append(self.tau_header)
+        if not self.fixed_repeats: headers.append(self.rpt_header)
+        return headers
+
+class AslStrucWidget(QtGui.QWidget):
     """
-    Widget which lets you define the structure of an ASL dataset
+    QWidget which allows an ASL structure to be described
     """
-    def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL Structure", icon="asl",  group="ASL", desc="Define the structure of an ASL dataset", **kwargs)
+    def __init__(self, ivm, parent=None):
+        QtGui.QWidget.__init__(self, parent)
+        self.ivm = ivm
         self.groups = {
             "p" : "Tag-Control pairs", 
             "P" : "Control-Tag pairs", 
@@ -197,16 +217,13 @@ class AslDataWidget(QpWidget):
             "r" : "Repeats", 
             "t" : "TIs"
         }
-        self.process = AslDataProcess(self.ivm)
+        #self.process = AslDataProcess(self.ivm)
         self.updating_ui = False
+        self.process = AslDataProcess(self.ivm)
         self.struc = dict(self.process.default_struc)
         
-    def init_ui(self):
         vbox = QtGui.QVBoxLayout()
         self.setLayout(vbox)
-
-        title = TitleWidget(self, help="asl_struc", subtitle="Define the structure of an ASL dataset %s" % __version__)
-        vbox.addWidget(title)
 
         grid = QtGui.QGridLayout()
 
@@ -217,6 +234,13 @@ class AslDataWidget(QpWidget):
 
         self.tc_combo = ChoiceOption("Data format", grid, ypos=1, choices=["Tag-control pairs", "Control-Tag pairs", "Already subtracted", "Multiphase"])
         self.tc_combo.sig_changed.connect(self.tc_changed)
+
+        self.rpt_combo = ChoiceOption("Repeats", grid, ypos=2, choices=["Fixed", "Variable"])
+        self.rpt_combo.sig_changed.connect(self.rpt_changed)
+        self.rpt_spin = QtGui.QSpinBox()
+        self.rpt_spin.setValue(1)
+        self.rpt_spin.setMinimum(1)
+        grid.addWidget(self.rpt_spin, 2, 2)
 
         grid.addWidget(QtGui.QLabel("Data grouping\n(top = outermost)"), 4, 0, alignment=QtCore.Qt.AlignTop)
         self.group_list = OrderList()
@@ -262,19 +286,84 @@ class AslDataWidget(QpWidget):
         self.warn_label.setVisible(False)
         vbox.addWidget(self.warn_label)
 
-        vbox.addStretch(1)
+        self.update_ui()
+        self.data_changed()
+        
+    def set_data_name(self, name):
+        if name not in self.ivm.data:
+            raise QpException("Data not found: %s" % name)
+        else:
+            idx = self.data_combo.findText(name)
+            self.data_combo.setCurrentIndex(idx)
+
+    def update_ui(self):
+        """ 
+        Update user interface from the structure 
+        """
+        # Hack to avoid processing signals while updating UI
+        self.updating_ui = True
+        try:
+            # Get the order and use it to select the right contents and grouping
+            order = self.struc["order"]
+            if "p" in order:
+                self.tc_combo.combo.setCurrentIndex(0)
+            elif "P" in order:
+                self.tc_combo.combo.setCurrentIndex(1)
+            elif "m" in order:
+                self.tc_combo.combo.setCurrentIndex(3)
+            else:
+                self.tc_combo.combo.setCurrentIndex(2)
+
+            # Phase list only visible in multiphase mode
+            self.nphases.label.setVisible("m" in order)
+            self.nphases.spin.setVisible("m" in order)
+
+            self.group_list.setItems([self.groups[g] for g in order])
+            self.data_preview.set_order(order)
+            
+            # Update TIs and repeats
+            tis = self.struc["tis"]
+            taus = self.struc["taus"]
+            grid_values = [tis, taus]
+
+            # Repeats can be set automatically    
+            data = self.ivm.data.get(self.data_combo.currentText(), None)
+            if data is None:
+                nrpts = 1
+            else:
+                nvols = data.nvols
+                nrpts = nvols / len(tis)
+                if "p" in order or "P" in order:
+                    nrpts /= 2
+            debug("Auto repeats is: ",nrpts)
+            var_rpts = "rpts" in self.struc
+            if var_rpts:
+                rpts = self.struc["rpts"]
+                grid_values.append(rpts)
+
+            self.rpt_spin.setValue(nrpts)
+            self.rpt_spin.setVisible(not var_rpts)
+            self.rpt_combo.combo.setCurrentIndex(int(var_rpts))
+            self.params_grid.set_fixed_repeats(not var_rpts)
+            self.params_grid.setValues(grid_values)
+        finally:
+            self.updating_ui = False
+
+    def rpt_changed(self):
+        if self.updating_ui: return
+        fixed =  self.rpt_combo.combo.currentIndex() == 0
+        if fixed:
+            self.struc.pop("rpts")
+        else:
+            self.struc["rpts"] = [self.rpt_spin.value(),] * len(self.struc["tis"])
+
         self.update_ui()
 
-    def activate(self):
-        self.data_changed()
-
-    def deactivate(self):
-        pass
-        
     def labelling_changed(self):
         """
         Labelling method (CASL/PASL) changed
         """
+        if self.updating_ui: return
         self.struc["casl"] = self.lbl_combo.combo.currentIndex() == 0
         self.params_grid.set_labelling(self.struc["casl"])
         self.save_structure()
@@ -318,22 +407,18 @@ class AslDataWidget(QpWidget):
 
         try:
             tis = self.params_grid.tis()
-            rpts = self.params_grid.rpts()
             taus = self.params_grid.taus()
-        except:
+            rpts = self.params_grid.rpts()
+        except ValueError:
             # Non-numeric values - don't change anything
             return
 
         self.struc["tis"] = tis
         self.struc["taus"] = taus
-        if len(rpts) > 1 and min(rpts) != max(rpts):
+        if rpts is not None:
             # We have variable repeats
             self.struc["rpts"] = rpts
-        else:
-            # Fixed repeats - will be determined automatically by update_ui
-            self.struc.pop("rpts", 0)
-            
-        self.update_ui()
+
         self.save_structure()
 
     def data_changed(self):
@@ -360,53 +445,13 @@ class AslDataWidget(QpWidget):
             self.struc = dict(self.process.default_struc)
         self.update_ui()
 
-    def update_ui(self):
-        """ 
-        Update user interface from the structure 
+    def save_structure(self):
         """
-        # Hack to avoid processing signals while updating UI
-        self.updating_ui = True
-        try:
-            # Get the order and use it to select the right contents and grouping
-            order = self.struc["order"]
-            if "p" in order:
-                self.tc_combo.combo.setCurrentIndex(0)
-            elif "P" in order:
-                self.tc_combo.combo.setCurrentIndex(1)
-            elif "m" in order:
-                self.tc_combo.combo.setCurrentIndex(3)
-            else:
-                self.tc_combo.combo.setCurrentIndex(2)
-
-            # Phase list only visible in multiphase mode
-            self.nphases.label.setVisible("m" in order)
-            self.nphases.spin.setVisible("m" in order)
-
-            self.group_list.setItems([self.groups[g] for g in order])
-            self.data_preview.set_order(order)
-            
-            # Update TIs and repeats
-            tis = self.struc["tis"]
-            taus = self.struc["taus"]
-
-            # Repeats can be set automatically    
-            if "rpts" in self.struc:
-                rpts = self.struc["rpts"]
-            else:
-                data = self.ivm.data.get(self.data_combo.currentText(), None)
-                if data is None:
-                    nrpts = 1
-                else:
-                    nvols = data.nvols
-                    nrpts = nvols / len(tis)
-                    if "p" in order or "P" in order:
-                        nrpts /= 2
-                rpts = [nrpts] * len(tis)
-                debug("Auto-setting repeats to: ", rpts)
-
-            self.params_grid.setValues([tis, rpts, taus])
-        finally:
-            self.updating_ui = False
+        Set the structure on the dataset using AslDataProcess
+        """
+        if self.validate():
+            self.process.run(self.get_options())
+            debug("Saved: ", self.struc)
 
     def validate(self):
         """
@@ -416,7 +461,7 @@ class AslDataWidget(QpWidget):
             data = self.ivm.data.get(self.data_combo.currentText(), None)
             if data is not None:
                 debug("Validate: ", self.params_grid.tis(), self.params_grid.rpts(), self.params_grid.taus(), self.struc["order"])
-                img = AslImage(data.name, data=data.std(), rpts=self.params_grid.rpts(), tis=self.params_grid.tis(), order=self.struc["order"])
+                AslImage(data.name, data=data.std(), rpts=self.params_grid.rpts(), tis=self.params_grid.tis(), order=self.struc["order"])
                 self.warn_label.setVisible(False)
                 return True
             else:
@@ -427,27 +472,50 @@ class AslDataWidget(QpWidget):
             warn(e)
             return False
 
-    def save_structure(self):
-        """
-        Set the structure on the dataset using AslDataProcess
-        """
-        if self.validate():
-            process = self.get_process()
-            process.run(self.get_options())
-            debug("Saved: ", self.struc)
-        
-    def batch_options(self):
-        return "AslData", self.get_options()
-
-    def get_process(self):
-        return AslDataProcess(self.ivm)
-
     def get_options(self):
         options = {
             "data" : self.data_combo.currentText(),
         }
         options.update(self.struc)
         return options
+
+class AslDataWidget(QpWidget):
+    """
+    Widget which lets you define the structure of an ASL dataset
+    """
+    def __init__(self, **kwargs):
+        QpWidget.__init__(self, name="ASL Structure", icon="asl",  group="ASL", desc="Define the structure of an ASL dataset", **kwargs)
+        self.groups = {
+            "p" : "Tag-Control pairs", 
+            "P" : "Control-Tag pairs", 
+            "m" : "Phases", 
+            "r" : "Repeats", 
+            "t" : "TIs"
+        }
+        self.process = AslDataProcess(self.ivm)
+        self.updating_ui = False
+        self.struc = dict(self.process.default_struc)
+        
+    def init_ui(self):
+        vbox = QtGui.QVBoxLayout()
+        self.setLayout(vbox)
+
+        title = TitleWidget(self, help="asl_struc", subtitle="Define the structure of an ASL dataset %s" % __version__)
+        vbox.addWidget(title)
+
+        self.struc_widget = AslStrucWidget(self.ivm, parent=self)
+        vbox.addWidget(self.struc_widget)
+
+        vbox.addStretch(1)
+        
+    def batch_options(self):
+        return "AslData", self.struc_widget.get_options()
+
+    def get_process(self):
+        return self.struc_widget.process
+    
+    def get_options(self):
+        return self.struc_widget.get_options()
 
 class AslPreprocWidget(QpWidget):
     """
@@ -464,14 +532,13 @@ class AslPreprocWidget(QpWidget):
         title = TitleWidget(self, help="asl", subtitle="Basic preprocessing of ASL data %s" % __version__)
         vbox.addWidget(title)
               
-        grid = QtGui.QGridLayout()
-        grid.addWidget(QtGui.QLabel("ASL data"), 0, 0)
-        self.data_combo = OverlayCombo(self.ivm)
-        self.data_combo.currentIndexChanged.connect(self.data_changed)
-        grid.addWidget(self.data_combo, 0, 1)
+        self.struc_widget = AslStrucWidget(self.ivm, parent=self)
+        vbox.addWidget(self.struc_widget)
 
         self.struc_check = AslStrucCheck(self.ivm)
-        grid.addWidget(self.struc_check, 1, 0, 1, 3)
+        vbox.addWidget(self.struc_check)
+
+        grid = QtGui.QGridLayout()
 
         self.sub_cb = QtGui.QCheckBox("Tag-control subtraction")
         self.sub_cb.stateChanged.connect(self.guess_output_name)
@@ -511,12 +578,12 @@ class AslPreprocWidget(QpWidget):
         self.output_name_edited = True
 
     def data_changed(self):
-        self.struc_check.set_data_name(self.data_combo.currentText())
+        self.struc_check.set_data_name(self.struc_widget.data_combo.currentText())
         self.output_name_edited = False
         self.guess_output_name()
 
     def guess_output_name(self):
-        data_name = self.data_combo.currentText()
+        data_name = self.struc_widget.data_combo.currentText()
         if data_name != "" and not self.output_name_edited:
             if self.sub_cb.isChecked():
                 data_name += "_sub"
@@ -531,21 +598,19 @@ class AslPreprocWidget(QpWidget):
         return self.process
 
     def get_options(self):
-        options = {
-            "data" : self.data_combo.currentText(),
-            "sub" : self.sub_cb.isChecked(),
-            "output-name" : self.output_name.text(),
-        }
+        options = self.struc_widget.get_options()
+        options["sub"] = self.sub_cb.isChecked()
+        options["output-name"] = self.output_name.text()
         if self.reorder_cb.isChecked(): 
             options["reorder"] = self.new_order.text()
         #if self.smooth_cb.isChecked(): 
         #    # FIXME sigma
         #    options["smooth"] = True
-
         return options
 
     def run(self):
         self.process.run(self.get_options())
+        self.struc_widget.set_data_name(self.output_name.text())
          
 FAB_CITE_TITLE = "Variational Bayesian inference for a non-linear forward model"
 FAB_CITE_AUTHOR = "Chappell MA, Groves AR, Whitcher B, Woolrich MW."
