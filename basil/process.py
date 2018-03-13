@@ -9,17 +9,14 @@ from .asl.image import AslImage
 
 USE_CMDLINE = False
 
-class AslDataProcess(Process):
-    """
-    Process allowing you to define the structure of an ASL dataset
-    """
-    PROCESS_NAME = "AslData"
+class AslProcess(Process):
 
     def __init__(self, ivm, **kwargs):
         Process.__init__(self, ivm, **kwargs)
         self.default_struc = {"order" : "prt", "tis" : [1.5,], "taus" : [1.4,], "casl" : True}
+        self.struc = None
 
-    def run(self, options):
+    def get_asldata(self, options):
         data_name = options.pop("data", None)
         if data_name is None:
             if self.ivm.main is None:
@@ -30,59 +27,67 @@ class AslDataProcess(Process):
         if data_name not in self.ivm.data:
             raise QpException("Data not found: %s" % data_name)
 
-        struc = dict(self.default_struc)
+        # Get already defined structure if there is one. Override it with
+        # specified structure options
+        struc_str = self.ivm.extras.get("ASL_STRUCTURE_" + data_name, None)
+        if struc_str is not None:
+            self.struc = yaml.load(struc_str)
+        else:
+            self.struc = {}
+            
         for opt in ["rpts", "tis", "taus", "order", "casl", "plds"]:
             v = options.pop(opt, None)
             if v is not None:
-                struc[opt] = v
+                self.struc[opt] = v
 
-        struc_str = yaml.dump(struc)
+        # Create AslImage object, this will fail if structure information is 
+        # insufficient or inconsistent
+        data = self.ivm.data[data_name]
+        img = AslImage(data.name, data=data.std(),
+                       tis=self.struc.get("tis", None), 
+                       rpts=self.struc.get("rpts", None), 
+                       order=self.struc.get("order", None))
+                       
+        # On success, set structure metadata so other widgets/processes can use it
+        struc_str = yaml.dump(self.struc)
         self.ivm.add_extra("ASL_STRUCTURE_" + data_name, struc_str)
+        return img
+
+class AslDataProcess(AslProcess):
+    """
+    Process which merely records the structure of an ASL dataset
+    """
+    PROCESS_NAME = "AslData"
+
+    def __init__(self, ivm, **kwargs):
+        AslProcess.__init__(self, ivm, **kwargs)
+
+    def run(self, options):
+        self.get_asldata(options)
         self.status = Process.SUCCEEDED
 
-class AslPreprocProcess(Process):
+class AslPreprocProcess(AslProcess):
     """
     ASL preprocessing process
     """
     PROCESS_NAME = "AslPreproc"
 
     def __init__(self, ivm, **kwargs):
-        Process.__init__(self, ivm, **kwargs)
+        AslProcess.__init__(self, ivm, **kwargs)
         
     def run(self, options):
-        data_name = options.pop("data", None)
-        if data_name is None:
-            if self.ivm.main is None:
-                raise QpException("No data loaded")
-            else:
-                data_name = self.ivm.main.name
-
-        if data_name not in self.ivm.data:
-            raise QpException("Data not found: %s" % data_name)
-
-        output_name = options.pop("output-name", data_name + "_preproc")
-
-        # Get information about the structure of the data. This should have been
-        # created by the ASL Data widget, but the user might not realize that
-        # they needed to do this
-        struc_str = self.ivm.extras.get("ASL_STRUCTURE_" + data_name, None)
-        if struc_str is None:
-            raise QpException("You need to define the structure of your ASL data first")
-        else:
-            struc = yaml.load(struc_str)
-
-        data = self.ivm.data[data_name]
-        img = AslImage(data.name, data=data.std(),
-                       tis=struc["tis"], rpts=struc.get("rpts", None), order=struc["order"])
+        img = self.get_asldata(options)
 
         if options.pop("sub", False):
             img = img.diff()
+
         new_order = options.pop("reorder", None)
         if new_order is not None:
             img = img.reorder(new_order)
 
+        output_name = options.pop("output-name", img.iname + "_preproc")
         self.ivm.add_data(img.data(), name=output_name)
-        new_struc = dict(struc)
+        new_struc = dict(self.struc)
         new_struc["data"] = output_name
         new_struc["order"] = img.order
 
