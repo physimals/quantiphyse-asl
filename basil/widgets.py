@@ -258,6 +258,7 @@ class AslStrucWidget(QtGui.QWidget):
         self.readout_combo.combo.currentIndexChanged.connect(self._readout_changed)
 
         self.slice_time = NumericOption("Time per slice (ms)", grid, ypos=9, default=10, decimals=2)
+        self.slice_time.spin.valueChanged.connect(self._slice_time_changed)
 
         self.mb_cb = QtGui.QCheckBox("Multiband")
         self.mb_cb.stateChanged.connect(self._mb_changed)
@@ -268,6 +269,7 @@ class AslStrucWidget(QtGui.QWidget):
         self.slices_per_band.setMinimum(1)
         self.slices_per_band.setValue(5)
         hbox.addWidget(self.slices_per_band)
+        self.slices_per_band.valueChanged.connect(self._sliceband_changed)
         self.slices_per_band_lbl = QtGui.QLabel("slices per band")
         hbox.addWidget(self.slices_per_band_lbl)
         grid.addLayout(hbox, 10, 1)
@@ -309,15 +311,30 @@ class AslStrucWidget(QtGui.QWidget):
             self.data_combo.setCurrentIndex(idx)
 
     def _readout_changed(self):
-        self.struc["2d_readout"] = self.readout_combo.combo.currentIndex() == 1
+        if self.readout_combo.combo.currentIndex() == 0:
+            self.struc.pop("slicedt", None)
+        else:
+            self.struc["slicedt"] = self.slice_time.spin.value()
         self._update_ui(ignore=[self.readout_combo])
+        self.save_structure()
+
+    def _slice_time_changed(self):
+        self.struc["slicedt"] = self.slice_time.spin.value()
+        self._update_ui(ignore=[self.slice_time])
+        self.save_structure()
 
     def _mb_changed(self):
         if self.mb_cb.isChecked():
-            self.struc["slices_per_band"] = self.slices_per_band.value()
+            self.struc["sliceband"] = self.slices_per_band.value()
         else:
-            self.struc.pop("slices_per_band", None)
+            self.struc.pop("sliceband", None)
         self._update_ui(ignore=[self.mb_cb])
+        self.save_structure()
+
+    def _sliceband_changed(self):
+        self.struc["sliceband"] = self.slices_per_band.value()
+        self._update_ui(ignore=[self.slices_per_band])
+        self.save_structure()
 
     def _update_ui(self, ignore=()):
         """ 
@@ -365,21 +382,30 @@ class AslStrucWidget(QtGui.QWidget):
                 self.lbl_combo.combo.setCurrentIndex(1-int(self.struc.get("casl", True)))
 
             # Readout
-            readout_2d = self.struc.get("2d_readout", False)
+            slice_time = self.struc.get("slicedt", None)
+            slices_per_band = self.struc.get("sliceband", None)
+            readout_2d = slice_time is not None
+            multiband = slices_per_band is not None
             if self.readout_combo not in ignore:
                 self.readout_combo.combo.setCurrentIndex(int(readout_2d))
 
-            self.slice_time.label.setVisible(readout_2d)
-            self.slice_time.spin.setVisible(readout_2d)
-            self.mb_cb.setVisible(readout_2d)
-            self.slices_per_band.setVisible(readout_2d)
-            self.slices_per_band_lbl.setVisible(readout_2d)
-
-            slices_per_band = self.struc.get("slices_per_band", None)
+            if self.slice_time not in ignore:
+                self.slice_time.label.setVisible(readout_2d)
+                self.slice_time.spin.setVisible(readout_2d)
+                if readout_2d: self.slice_time.spin.setValue(slice_time)
+            
             if self.mb_cb not in ignore:
-                self.mb_cb.setChecked(slices_per_band is not None)
+                self.mb_cb.setVisible(readout_2d)
+                self.mb_cb.setChecked(multiband)
+
             if self.slices_per_band not in ignore:
-                self.slices_per_band.setEnabled(slices_per_band is not None)
+                self.slices_per_band.setVisible(readout_2d)
+                self.slices_per_band_lbl.setVisible(readout_2d)
+                self.slices_per_band.setEnabled(multiband)
+                if multiband: self.slices_per_band.setValue(slices_per_band)
+
+            if self.slices_per_band not in ignore:
+                self.slices_per_band.setEnabled(multiband)
                 if slices_per_band is not None:
                     self.slices_per_band.setValue(slices_per_band)
 
