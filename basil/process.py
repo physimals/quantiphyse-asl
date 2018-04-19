@@ -5,18 +5,19 @@ Copyright (c) 2013-2018 University of Oxford
 """
 
 import yaml
+from StringIO import StringIO
 
-from quantiphyse.utils import warn, debug, get_plugins
-from quantiphyse.utils.exceptions import QpException
+from quantiphyse.utils import warn, debug, get_plugins, QpException
+from quantiphyse.processes import BackgroundProcess, Process
 
-from quantiphyse.analysis import BackgroundProcess, Process
-
-from .asl.image import AslImage
+from .oxasl import AslImage, fsl, basil
 
 USE_CMDLINE = False
 
 class AslProcess(Process):
-    """ Base class for processes which use ASL data """
+    """ 
+    Base class for processes which use ASL data 
+    """
 
     def __init__(self, ivm, **kwargs):
         super(AslProcess, self).__init__(ivm, **kwargs)
@@ -25,26 +26,20 @@ class AslProcess(Process):
         self.asldata = None
 
     def get_asldata(self, options):
-        """ Get the data structure and construct an AslData instance from it """
-        data_name = options.pop("data", None)
-        if data_name is None:
-            if self.ivm.main is None:
-                raise QpException("No data loaded")
-            else:
-                data_name = self.ivm.main.name
-
-        if data_name not in self.ivm.data:
-            raise QpException("Data not found: %s" % data_name)
+        """ 
+        Get the main data set and construct an AslData instance from it 
+        """
+        data = self.get_data(options)
 
         # Get already defined structure if there is one. Override it with
         # specified structure options
-        struc_str = self.ivm.extras.get("ASL_STRUCTURE_" + data_name, None)
+        struc_str = self.ivm.extras.get("ASL_STRUCTURE_" + data.name, None)
         if struc_str is not None:
             self.struc = yaml.load(struc_str)
         else:
             self.struc = {}
             
-        for opt in ["rpts", "tis", "taus", "order", "casl", "plds"]:
+        for opt in ["order", "rpts", "taus", "casl", "tis", "plds", "nphases"]:
             v = options.pop(opt, None)
             if v is not None:
                 self.struc[opt] = v
@@ -53,15 +48,18 @@ class AslProcess(Process):
 
         # Create AslImage object, this will fail if structure information is 
         # insufficient or inconsistent
-        data = self.ivm.data[data_name]
-        self.asldata = AslImage(data.name, data=data.std(),
-                                tis=self.struc.get("tis", self.struc.get("plds", None)), 
+        data = self.ivm.data[data.name]
+        self.asldata = AslImage(data.name, data=data.raw(),
+                                tis=self.struc.get("tis", None),
+                                plds=self.struc.get("plds", None), 
                                 rpts=self.struc.get("rpts", None), 
-                                order=self.struc.get("order", None))
+                                order=self.struc.get("order", None),
+                                nphases=self.struc.get("nphases", None))
+        self.grid = data.grid
                        
         # On success, set structure metadata so other widgets/processes can use it
         struc_str = yaml.dump(self.struc)
-        self.ivm.add_extra("ASL_STRUCTURE_" + data_name, struc_str)
+        self.ivm.add_extra("ASL_STRUCTURE_" + data.name, struc_str)
 
 class AslDataProcess(AslProcess):
     """
@@ -93,7 +91,7 @@ class AslPreprocProcess(AslProcess):
             self.asldata = self.asldata.mean_across_repeats()
 
         output_name = options.pop("output-name", self.asldata.iname + "_preproc")
-        self.ivm.add_data(self.asldata.data(), name=output_name)
+        self.ivm.add_data(self.asldata.data(), name=output_name, grid=self.grid)
         new_struc = dict(self.struc)
         for opt in ["rpts", "tis", "taus", "order", "casl", "plds"]:
             if hasattr(self.asldata, opt):
@@ -101,38 +99,56 @@ class AslPreprocProcess(AslProcess):
 
         debug("New structure is")
         debug(str(new_struc))
-        struc_str = yaml.dump(self.struc)
+        struc_str = yaml.dump(new_struc)
         self.ivm.add_extra("ASL_STRUCTURE_" + output_name, struc_str)
 
         self.status = Process.SUCCEEDED
 
 class BasilProcess(BackgroundProcess, AslProcess):
     """
-    Currently a direct wrapper around the Fabber process. We would like to subclass
-    it but this is not straightforward because the Fabber process class is loaded
-    from a plugin.
     """
+
     def __init__(self, ivm, **kwargs):
         try:
             self.fabber = get_plugins("processes", class_name="FabberProcess")[0](ivm)
+            self.fabber.sig_finished.connect(self._fabber_finished)
+            self.fabber.sig_progress.connect(self._fabber_progress)
         except Exception, e:
             warn(str(e))
             raise QpException("Fabber core library not found.\n\n You must install Fabber to use this widget")
 
-        kwargs["fn"] = self.fabber.fn
-        super(BasilProcess, self).__init__(ivm, **kwargs)
-        #AslProcess.__init__(self, ivm, self.fabber.fn, **kwargs)
-        #BackgroundProcess.__init__(self, ivm, self.fabber.fn, **kwargs)
+        self.steps = []
+        self.step_num = 0
+        super(BasilProcess, self).__init__(ivm, worker_fn=None, **kwargs)
 
     def run(self, options):
         self.get_asldata(options)
-
         self.asldata = self.asldata.diff().reorder("rt")
-        self.ivm.add_data(self.asldata.data(), name=self.asldata.iname)
-        options["data"] = self.asldata.iname
+        roi = self.get_roi(options)
+
+        # FIXME temporary
+        self.ivm.add_data(self.asldata.data(), name=self.asldata.iname, grid=self.grid)
+        
+        # Convert image options into fsl.Image objects, als check they exist in the IVM
+        # Names and descriptions of options which are images
+        images = {
+            "t1im": "T1 map", 
+            "pwm" : "White matter PV map", 
+            "pgm" : "Grey matter PV map",
+        }
+        options["asldata"] = self.asldata
+        options["mask"] = fsl.Image(roi.name, data=roi.raw(), role="Mask")
+        for opt, role in images.items():
+            if opt in options:
+                data = self.ivm.data.get(options[opt], self.ivm.rois.get(options[opt], None))
+                if data is not None:
+                    options[opt] = fsl.Image(data.name, data=data.resample(self.grid).raw(), role=role)
+                    #options[opt] = data.resample(self.grid).raw()
+                else:
+                    raise QpException("Data not found: %s" % options[opt])
 
         # Taus are relevant only for CASL labelling
-        # For taus/repeats try to use a single value where possible
+        # Try to use a single value where possible
         if self.struc["casl"]:
             options["casl"] = ""
             taus = self.struc["taus"]
@@ -141,18 +157,56 @@ class BasilProcess(BackgroundProcess, AslProcess):
             else:
                 for idx, tau in enumerate(taus):
                     options["tau%i" % (idx+1)] = str(tau)
-        
-        if min(self.asldata.rpts) == max(self.asldata.rpts):
-            options["repeats"] = str(self.asldata.rpts[0])
-        else:
-            for idx, rpt in enumerate(self.asldata.rpts):
-                options["rpt%i" % (idx+1)] = str(rpt)
 
         # For CASL obtain TI by adding PLD to tau
         for idx, ti in enumerate(self.asldata.tis):
             if self.struc["casl"]:
                 ti += taus[idx]
             options["ti%i" % (idx+1)] = str(ti)
+
+        debug("Basil options: ")
+        debug(options)
+        logbuf = StringIO()
+        self.steps = basil.get_steps(log=logbuf, **options)
+        self.log = logbuf.getvalue()
+        self.step_num = 0
+        self.status = Process.RUNNING
+        self._next_step()
+
+    def cancel(self):
+        self.fabber.cancel()
+        
+    def _next_step(self):
+        if self.status != self.RUNNING:
+            return
+        
+        if self.step_num < len(self.steps):
+            step = self.steps[self.step_num]
+            self.step_num += 1
+            debug("Basil: starting step %i" % self.step_num)
+            self._start_fabber(*step)
+        else:
+            debug("Basil: All steps complete")
+            self.log += "COMPLETE\n"
+            self.status = Process.SUCCEEDED
+            self.steps = []
+            self.step_num = 0
+            if "finalMVN" in self.ivm.data:
+                self.ivm.delete_data("finalMVN")
+            self.sig_finished.emit(self.status, self.output, self.log, self.exception)
+
+    def _start_fabber(self, step, step_desc, infile, mask, options, prev_step=None):
+        options = dict(options)
+        options["model-group"] = "asl"
+        options["data"] = infile.iname
+        options["roi"] = mask.iname
+        if self.step_num == len(self.steps):
+            # Final step - save stuff we're interested in
+            options["save-mean"] = ""
+            options["save-std"] = ""
+        else:
+            # Just save the MVN so we can continue from it
+            options["save-mvn"] = ""
 
         # Rename output data to match oxford_asl
         options["output-rename"] = {
@@ -163,18 +217,35 @@ class BasilProcess(BackgroundProcess, AslProcess):
             "std_deltiss" : "arrival_std",
             "std_fblood" : "aCBV_std",
         }
-        self.fabber.sig_finished.connect(self.finished)
-        self.fabber.sig_progress.connect(self.update_progress)
+
+        if prev_step is not None:
+            step_desc += " - init with STEP %i" % prev_step
+            options["continue-from-mvn"] = "finalMVN"
+
+        debug("Basil: Fabber options")
+        for k in sorted(options.keys()):
+            debug("%s=%s" % (k, str(options[k])))
+
+        self.log += step_desc + "\n\n"
         self.fabber.run(options)
 
-    def cancel(self):
-        self.fabber.cancel()
+    def _fabber_finished(self):
+        if self.status != self.RUNNING:
+            return
 
-    def update_progress(self, *args, **kwargs):
-        self.sig_progress.emit(*args, **kwargs)
-        
-    def finished(self, *args, **kwargs):
-        self.status = self.fabber.status
-        self.log = self.fabber.log
-        self.sig_finished.emit(*args, **kwargs)
+        self.log += self.fabber.log + "\n\n"
+        if self.fabber.status == Process.SUCCEEDED:
+            debug("Basil: completed step %i" % self.step_num)
+            self._next_step()
+        else:
+            debug("Basil: Fabber failed on step %i" % self.step_num)
+            self.log += "CANCELLED\n"
+            self.status = self.fabber.status
+            self.sig_finished.emit(self.status, self.output, self.log, self.fabber.exception)
+            
+    def _fabber_progress(self, complete):
+        debug("Basil: Fabber progress: %f", complete)
+        if self.status == self.RUNNING:
+            # emit sig_progress scaling by number of steps
+            self.sig_progress.emit((self.step_num - 1 + complete)/len(self.steps))
         

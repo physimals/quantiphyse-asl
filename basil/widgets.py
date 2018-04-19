@@ -16,7 +16,7 @@ from quantiphyse.utils.exceptions import QpException
 from .process import AslDataProcess, AslPreprocProcess, BasilProcess
 
 from ._version import __version__
-from .asl.image import AslImage
+from .oxasl import AslImage
 
 ORDER_LABELS = {
     "r" : ("Repeat ", "R", "Repeats"), 
@@ -238,6 +238,7 @@ class AslStrucWidget(QtGui.QWidget):
         self.nphases = NumericOption("Number of Phases (evenly spaced)", grid, ypos=3, default=8, intonly=True, minval=2)
         self.nphases.label.setVisible(False)
         self.nphases.spin.setVisible(False)
+        self.nphases.spin.valueChanged.connect(self._nphases_changed)
 
         grid.addWidget(QtGui.QLabel("Data grouping\n(top = innermost)"), 4, 0, alignment=QtCore.Qt.AlignTop)
         self.group_list = OrderList()
@@ -314,12 +315,12 @@ class AslStrucWidget(QtGui.QWidget):
         if self.readout_combo.combo.currentIndex() == 0:
             self.struc.pop("slicedt", None)
         else:
-            self.struc["slicedt"] = self.slice_time.spin.value()
+            self.struc["slicedt"] = self.slice_time.spin.value() / 1000 # ms-s
         self._update_ui(ignore=[self.readout_combo])
         self.save_structure()
 
     def _slice_time_changed(self):
-        self.struc["slicedt"] = self.slice_time.spin.value()
+        self.struc["slicedt"] = self.slice_time.spin.value() / 1000 # ms-s
         self._update_ui(ignore=[self.slice_time])
         self.save_structure()
 
@@ -334,6 +335,11 @@ class AslStrucWidget(QtGui.QWidget):
     def _sliceband_changed(self):
         self.struc["sliceband"] = self.slices_per_band.value()
         self._update_ui(ignore=[self.slices_per_band])
+        self.save_structure()
+
+    def _nphases_changed(self):
+        self.struc["nphases"] = self.nphases.spin.value()
+        self._update_ui(ignore=[self.nphases])
         self.save_structure()
 
     def _update_ui(self, ignore=()):
@@ -359,6 +365,8 @@ class AslStrucWidget(QtGui.QWidget):
             if self.nphases not in ignore:
                 self.nphases.label.setVisible("m" in order)
                 self.nphases.spin.setVisible("m" in order)
+                if "m" in order:
+                    self.nphases.spin.setValue(self.struc.get("nphases", 8))
 
             if self.group_list not in ignore:
                 self.group_list.setItems([self.groups[g] for g in order])
@@ -392,7 +400,7 @@ class AslStrucWidget(QtGui.QWidget):
             if self.slice_time not in ignore:
                 self.slice_time.label.setVisible(readout_2d)
                 self.slice_time.spin.setVisible(readout_2d)
-                if readout_2d: self.slice_time.spin.setValue(slice_time)
+                if readout_2d: self.slice_time.spin.setValue(slice_time*1000) # s->ms
             
             if self.mb_cb not in ignore:
                 self.mb_cb.setVisible(readout_2d)
@@ -459,6 +467,11 @@ class AslStrucWidget(QtGui.QWidget):
             order = char + order
 
         self.struc["order"] = order
+        if "m" in order:
+            self.struc["nphases"] = self.nphases.spin.value()
+        else:
+            self.struc.pop("nphases", None)
+
         self._update_ui(ignore=[self.tc_combo])
         self.save_structure()
 
@@ -536,7 +549,11 @@ class AslStrucWidget(QtGui.QWidget):
             data = self.ivm.data.get(self.data_combo.currentText(), None)
             if data is not None:
                 debug("Validate: ", self.params_grid.tis(), self.params_grid.rpts(), self.params_grid.taus(), self.struc["order"])
-                AslImage(data.name, data=data.std(), rpts=self.params_grid.rpts(), tis=self.params_grid.tis(), order=self.struc["order"])
+                AslImage(data.name, data=data.raw(), 
+                         rpts=self.params_grid.rpts(), 
+                         tis=self.params_grid.tis(), 
+                         order=self.struc["order"], 
+                         nphases=self.struc.get("nphases", None))
                 self.warn_label.setVisible(False)
                 return True
             return False
@@ -597,7 +614,7 @@ class AslPreprocWidget(QpWidget):
     Widget which lets you do basic preprocessing on ASL data
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL Preproc", icon="asl", group="ASL", desc="Basic preprocessing on ASL data", **kwargs)
+        QpWidget.__init__(self, name="ASL Preprocess", icon="asl", group="ASL", desc="Basic preprocessing on ASL data", **kwargs)
         self.process = AslPreprocProcess(self.ivm)
         self.output_name_edited = False
 
@@ -776,35 +793,17 @@ class AslBasilWidget(QpWidget):
         return self.process
 
     def _infer(self, options, param, selected):
-        if selected:
-            options["infer%s" % param] = ""
-            options["inc%s" % param] = ""
-        else:
-            options.pop("infer%s" % param, None)
-            options.pop("inc%s" % param, None)
+        options["infer%s" % param] = selected
 
     def get_options(self):
         # General defaults
         options = self.struc_widget.get_options()
-        options["model-group"] = "asl"
-        options["model"] = "aslrest"
-        options["save-mean"] = ""
-        options["save-model-fit"] = ""
-        options["noise"] = "white"
-        options["max-iterations"] = "20"
-        options["mask"] = self.roi_combo.currentText()
         options["t1"] = str(self.t1.spin.value())
         options["t1b"] = str(self.t1b.spin.value())
         options["bat"] = str(self.bat.spin.value())
-        options["save-std"] = ""
-
+        options["spatial"] = self.spatial_cb.isChecked()
+        
         # FIXME batsd
-
-        # Analysis options
-        if self.spatial_cb.isChecked():
-            options["method"] = "spatialvb"
-        else:
-            options["method"] = "vb"
 
         self._infer(options, "tiss", True)
         self._infer(options, "t1", self.t1_cb.isChecked())
