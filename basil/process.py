@@ -193,9 +193,11 @@ class BasilProcess(BackgroundProcess, AslProcess):
             self.step_num = 0
             if "finalMVN" in self.ivm.data:
                 self.ivm.delete_data("finalMVN")
-            self.sig_finished.emit(self.status, self.output, self.log, self.exception)
+            self.sig_finished.emit(self.status, self.log, self.exception)
 
     def _start_fabber(self, step, step_desc, infile, mask, options, prev_step=None):
+        self.sig_step.emit(step_desc)
+
         options = dict(options)
         options["model-group"] = "asl"
         options["data"] = infile.iname
@@ -229,19 +231,19 @@ class BasilProcess(BackgroundProcess, AslProcess):
         self.log += step_desc + "\n\n"
         self.fabber.run(options)
 
-    def _fabber_finished(self):
+    def _fabber_finished(self, status, log, exception):
         if self.status != self.RUNNING:
             return
 
-        self.log += self.fabber.log + "\n\n"
-        if self.fabber.status == Process.SUCCEEDED:
+        self.log += log + "\n\n"
+        if status == Process.SUCCEEDED:
             debug("Basil: completed step %i" % self.step_num)
             self._next_step()
         else:
             debug("Basil: Fabber failed on step %i" % self.step_num)
             self.log += "CANCELLED\n"
-            self.status = self.fabber.status
-            self.sig_finished.emit(self.status, self.output, self.log, self.fabber.exception)
+            self.status = status
+            self.sig_finished.emit(self.status, self.log, exception)
             
     def _fabber_progress(self, complete):
         debug("Basil: Fabber progress: %f", complete)
