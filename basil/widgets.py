@@ -826,4 +826,77 @@ class AslCalibWidget(QpWidget):
         QpWidget.__init__(self, name="ASL Calibration", icon="asl", group="ASL", desc="Calibration of fitted ASL data", **kwargs)
         
     def init_ui(self):
-        pass
+        vbox = QtGui.QVBoxLayout()
+        self.setLayout(vbox)
+        
+        title = TitleWidget(self, help="asl", subtitle="ASL calibration v%s" % __version__)
+        vbox.addWidget(title)
+              
+        calib_box = QtGui.QGroupBox("Calibration")
+        grid = QtGui.QGridLayout()
+        calib_box.setLayout(grid)
+
+        self.calib_method = ChoiceOption("Calibration method", grid, ypos=0, choices=["Voxelwise", "Reference region"])
+        self.calib_method.combo.currentIndexChanged.connect(self._calib_method_changed)
+        
+        grid.addWidget(QtGui.QLabel("Calibration image"), 1, 0)
+        self.calib_img = OverlayCombo(self.ivm)
+        grid.addWidget(self.calib_img, 1, 1)
+
+        self.tr = NumericOption("Sequence TR (s)", grid, ypos=2, minval=0, maxval=20, default=6, step=0.1)
+        self.gain = NumericOption("Calibration gain", grid, ypos=3, minval=0, maxval=5, default=1, step=0.05)
+
+        grid.addWidget(QtGui.QLabel("Mask"), 1, 0)
+        self.roi_combo = RoiCombo(self.ivm)
+        grid.addWidget(self.roi_combo, 1, 1)
+
+        vbox.addWidget(calib_box)
+
+        self.voxelwise_box = QtGui.QGroupBox("Voxelwise calibration")
+        grid = QtGui.QGridLayout()
+        self.voxelwise_box.setLayout(grid)
+        self.alpha = NumericOption("Inversion efficiency", grid, ypos=0, minval=0, maxval=1, default=0.98, step=0.05)
+        vbox.addWidget(self.voxelwise_box)
+
+        self.refregion_box = QtGui.QGroupBox("Reference region calibration")
+        grid = QtGui.QGridLayout()
+        self.refregion_box.setLayout(grid)
+        self.ref_type = ChoiceOption("Reference type", grid, ypos=0, choices=["CSF", "WM", "GM", "None"])
+
+        grid.addWidget(QtGui.QLabel("ROI"), 1, 0)
+        self.ref_roi = RoiCombo(self.ivm)
+        grid.addWidget(self.ref_roi, 1, 1)
+        # TODO pick specific region of ROI
+
+        self.ref_t1 = NumericOption("Reference T1 (s)", grid, ypos=2, minval=0, maxval=10, default=4.3, step=0.1)
+        self.te = NumericOption("Sequence TE (ms)", grid, ypos=3, minval=0, maxval=100, default=0, step=5)
+        self.ref_t2 = NumericOption("Reference T2 (ms)", grid, ypos=4, minval=0, maxval=2000, default=750, step=50)
+        self.t1b = NumericOption("Blood T1 (s)", grid, ypos=5, minval=0, maxval=2000, default=150, step=50)
+        # TODO sensitivity correction
+
+        self.refregion_box.setVisible(False)
+        vbox.addWidget(self.refregion_box)
+
+        self.data_box = QtGui.QGroupBox("Data to calibrate")
+        grid = QtGui.QGridLayout()
+        grid.addWidget(QtGui.QLabel("Data"), 0, 0)
+        self.data = OverlayCombo(self.ivm)
+        grid.addWidget(self.data, 0, 1)
+        self.data_type = ChoiceOption("Data type", grid, ypos=1, choices=["Perfusion", "Perfusion variance"])
+        self.data_box.setLayout(grid)
+        vbox.addWidget(self.data_box)
+        # TODO calibrate multiple data sets
+
+        runbox = RunBox(self.get_process, self.get_options, title="Run calibration", save_option=True)
+        vbox.addWidget(runbox)
+        vbox.addStretch(1)
+        
+    def get_process(self):
+        return None
+
+    def get_options(self):
+        return None
+
+    def _calib_method_changed(self, idx):
+        self.voxelwise_box.setVisible(idx == 0)
+        self.refregion_box.setVisible(idx == 1)
