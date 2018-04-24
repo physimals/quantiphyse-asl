@@ -240,7 +240,7 @@ class AslStrucWidget(QtGui.QWidget):
         self.nphases.spin.setVisible(False)
         self.nphases.spin.valueChanged.connect(self._nphases_changed)
 
-        grid.addWidget(QtGui.QLabel("Data grouping\n(top = innermost)"), 4, 0, alignment=QtCore.Qt.AlignTop)
+        grid.addWidget(QtGui.QLabel("Data grouping\n(top = outermost)"), 4, 0, alignment=QtCore.Qt.AlignTop)
         self.group_list = OrderList()
         grid.addWidget(self.group_list, 4, 1)
         self.list_btns = OrderListButtons(self.group_list)
@@ -370,10 +370,12 @@ class AslStrucWidget(QtGui.QWidget):
 
             if self.group_list not in ignore:
                 self.group_list.setItems([self.groups[g] for g in order])
-                self.data_preview.set_order(order)
+            
+            self.data_preview.set_order(order)
             
             # Repeats
-            var_rpts = "rpts" in self.struc
+            rpts = self.struc.get("rpts", None)
+            var_rpts = rpts is not None and min(rpts) != max(rpts)
 
             if self.params_grid not in ignore:
                 grid_values = [self.struc["tis"], self.struc["taus"]]
@@ -480,7 +482,7 @@ class AslStrucWidget(QtGui.QWidget):
         if self.updating_ui: return
 
         order = ""
-        for item in self.group_list.items():
+        for item in reversed(self.group_list.items()):
             code = [k for k, v in self.groups.items() if v == item][0]
             order += code
         self.struc["order"] = order
@@ -674,7 +676,6 @@ class AslPreprocWidget(QpWidget):
         self.output_name_edited = False
         self._guess_output_name()
         # Tag-control differencing only if data contains TC or CT pairs
-        print(self.struc_widget.struc["order"])
         pairs = "p" in self.struc_widget.struc["order"].lower()
         self.sub_cb.setEnabled(pairs)
         if not pairs: self.sub_cb.setChecked(False)
