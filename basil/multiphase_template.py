@@ -1,11 +1,25 @@
-TEMPLATE = """
+#
+# Options: number of phases, 
+#
+# Cases:
+#   - Case1:
+#       Fabber:
+#         data: %s
+#         nphases: %i
+#       Supervoxels:
+#         sigma: %f
+#         n-supervoxels: %i
+#         compactness: %i
+#
+
+MULTIPHASE_YAML = """
 # Template for analysing multiphase ASL data
 Processing:
 
   # Initial biased run
   - Fabber:
-      loadmodels: %(loadmodels)s
-      data-name: asl_multiphase_data
+      model-group: asl
+      model:  asl_multiphase
       method: spatialvb
       PSP_byname1: phase 
       PSP_byname1_type: N
@@ -14,21 +28,20 @@ Processing:
       PSP_byname3: offset 
       PSP_byname3_type: M 
       max-iterations: 10
-      model:  asl_multiphase
       repeats: 1
       modfn: fermi
       alpha: 70
       beta: 19
-      nph: %(nphases)i
+      nph: 8
       save-mean:
 
   # ... which is used to segment 
   - Supervoxels:
       data: mean_phase
       roi: mask
-      n-supervoxels: %(nsv)i
-      compactness: %(compactness)f
-      sigma: %(sigma)f
+      n-supervoxels: 8
+      compactness: 0.01
+      sigma: 0.5
       output-name: sv
 
   # So we do not overwrite original results
@@ -40,12 +53,13 @@ Processing:
   # Michael's suggested approach - average signal in ROI regions
   # to increase SNR and fit phase which should be less biased
   - MeanValues:
-      data: asl_multiphase_data
+      Id: MC
       roi: sv
       output-name: data_sv
 
   - Fabber:
-      loadmodels: %(loadmodels)s
+      model-group: asl
+      model:  asl_multiphase
       data: data_sv
       method: spatialvb
       PSP_byname1: phase
@@ -55,12 +69,11 @@ Processing:
       PSP_byname3: offset 
       PSP_byname3_type: M 
       max-iterations: 10
-      model:  asl_multiphase
       repeats: 1
       modfn: fermi
       alpha: 70
       beta: 19
-      nph: %(nphases)i
+      nph: 8
       save-mean:
 
   # Create phase prior from results
@@ -77,7 +90,8 @@ Processing:
       
   # Final run to fit mag and offset with fixed phase
   - Fabber:
-      loadmodels: %(loadmodels)s
+      model-group: asl
+      model:  asl_multiphase
       method: spatialvb
       PSP_byname1: phase 
       PSP_byname1_image: phase_prior_sv
@@ -88,17 +102,12 @@ Processing:
       PSP_byname3: offset 
       PSP_byname3_type: M 
       max-iterations: 10
-      model:  asl_multiphase
       repeats: 1
       modfn: fermi
       alpha: 70
       beta: 19
-      nph: %(nphases)i
+      nph: 8
       save-mean:
       save-noise-mean:
       save-modelfit:
-
-Cases:
-  - Case1:
-
 """

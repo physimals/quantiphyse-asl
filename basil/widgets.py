@@ -816,9 +816,6 @@ class AslBasilWidget(QpWidget):
         
         return options
 
-    def run(self):
-        self.process.run(self.get_options())
-
 class AslCalibWidget(QpWidget):
     """
     Widget to do calibration on ASL data

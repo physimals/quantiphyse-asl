@@ -4,11 +4,14 @@ QP-BASIL - Quantiphyse processes for ASL data
 Copyright (c) 2013-2018 University of Oxford
 """
 
-import yaml
+import time
 from StringIO import StringIO
 
+import yaml
+
 from quantiphyse.utils import warn, debug, get_plugins, QpException
-from quantiphyse.processes import BackgroundProcess, Process
+from quantiphyse.utils.batch import Script, BatchScriptCase
+from quantiphyse.processes import Process
 
 from .oxasl import AslImage, fsl, basil
 
@@ -69,7 +72,6 @@ class AslDataProcess(AslProcess):
 
     def run(self, options):
         self.get_asldata(options)
-        self.status = Process.SUCCEEDED
 
 class AslPreprocProcess(AslProcess):
     """
@@ -102,11 +104,11 @@ class AslPreprocProcess(AslProcess):
         struc_str = yaml.dump(new_struc)
         self.ivm.add_extra("ASL_STRUCTURE_" + output_name, struc_str)
 
-        self.status = Process.SUCCEEDED
 
-class BasilProcess(BackgroundProcess, AslProcess):
+class BasilProcess(AslProcess):
     """
     """
+    PROCESS_NAME = "Basil"
 
     def __init__(self, ivm, **kwargs):
         try:
@@ -119,12 +121,15 @@ class BasilProcess(BackgroundProcess, AslProcess):
 
         self.steps = []
         self.step_num = 0
-        super(BasilProcess, self).__init__(ivm, worker_fn=None, **kwargs)
+        super(BasilProcess, self).__init__(ivm, **kwargs)
 
     def run(self, options):
         self.get_asldata(options)
         self.asldata = self.asldata.diff().reorder("rt")
-        roi = self.get_roi(options)
+        roi = self.get_roi(options, self.grid)
+        if roi.name not in self.ivm.rois:
+            # FIXME Necesssary for dummy ROI to be in the IVM
+            self.ivm.add_roi(roi)
 
         # FIXME temporary
         self.ivm.add_data(self.asldata.data(), name=self.asldata.iname, grid=self.grid)
@@ -206,6 +211,7 @@ class BasilProcess(BackgroundProcess, AslProcess):
             # Final step - save stuff we're interested in
             options["save-mean"] = ""
             options["save-std"] = ""
+            options["save-model-fit"] = ""
         else:
             # Just save the MVN so we can continue from it
             options["save-mvn"] = ""
@@ -229,7 +235,7 @@ class BasilProcess(BackgroundProcess, AslProcess):
             debug("%s=%s" % (k, str(options[k])))
 
         self.log += step_desc + "\n\n"
-        self.fabber.run(options)
+        self.fabber.execute(options)
 
     def _fabber_finished(self, status, log, exception):
         if self.status != self.RUNNING:
@@ -251,3 +257,82 @@ class BasilProcess(BackgroundProcess, AslProcess):
             # emit sig_progress scaling by number of steps
             self.sig_progress.emit((self.step_num - 1 + complete)/len(self.steps))
         
+class MacroProcess(Process):
+
+    def __init__(self, ivm, yaml_code, **kwargs):
+        self.script = Script(ivm=ivm, code=yaml_code)
+        self.script.sig_start_process.connect(self._start_process)
+        self.script.sig_done_process.connect(self._done_process)
+        self.script.sig_progress.connect(self._progress)
+        self.script.sig_finished.connect(self._done_script)
+        super(MacroProcess, self).__init__(ivm, worker_fn=None, **kwargs)
+
+    def run(self, _):
+        self.status = Process.RUNNING
+        self.script.run()
+
+    def cancel(self):
+        if self._current_process is not None:
+            self._current_process.cancel()
+        
+    def _start_process(self, process, params):
+        self.start = time.time()
+        self.log += "Running %s\n\n" % process.proc_id
+        for key, value in params.items():
+            debug("      %s=%s" % (key, str(value)))
+                
+    def _done_process(self, process, _):
+        self.log += process.log
+        end = time.time()
+
+        if process.status == Process.SUCCEEDED:
+            self.log += "\nDONE (%.1fs)\n" % (end - self.start)
+        else:
+            self.log += "\nFAILED: %i\n" % process.status
+            self.status = process.status
+            self.exception = process.exception
+            self.sig_finished.emit(self.status, self.log, self.exception)
+
+    def _progress(self, complete):
+        debug("Progress: %f", complete)
+        if self.status == self.RUNNING:
+            # emit sig_progress scaling by number of steps
+            self.sig_progress.emit(complete)
+
+    def _done_script(self):
+        if self.status == Process.RUNNING:
+            self.log += "Script finished\n"
+            self.status = Process.SUCCEEDED
+            self.sig_finished.emit(self.status, self.log, self.exception)
+        
+from .multiphase_template import MULTIPHASE_YAML
+
+class MultiphaseProcess(MacroProcess):
+
+    PROCESS_NAME = "MultiphaseAsl"
+
+    def __init__(self, ivm, **kwargs):
+        MacroProcess.__init__(self, ivm, MULTIPHASE_YAML, **kwargs)
+
+    def run(self, options):
+        data = self.get_data(options)
+        case_params = {
+            "Fabber" : {
+                "data" : data.name,
+                "roi" : options.pop("roi", None),
+                "nphases" : options.pop("nphases"),
+            },
+            "MeanValues" : {
+                "Id" : "MC",
+                "data" : data.name,
+            },
+            "Supervoxels" : {
+                "sigma" : options.pop("sigma", 0),
+                "n-supervoxels" : options.pop("n-supervoxels", 8),
+                "compactness" : options.pop("compactness", 0.01),
+            },
+        }
+        case = BatchScriptCase("MultiphaseCase", case_params)
+        self.script.cases = [case, ]
+        self.status = Process.RUNNING
+        self.script.run()
