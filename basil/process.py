@@ -363,7 +363,7 @@ class AslCalibProcess(Process):
             raise QpException("Calibration method must be voxelwise or refregion")
         
         logbuf = StringIO()
-        calibrated = calib(img, calib_img, output_name, method, log=logbuf, **options)
+        calibrated = calib(img, calib_img, method, output_name, log=logbuf, **options)
         self.log = logbuf.getvalue()
         self.ivm.add_data(name=calibrated.iname, data=calibrated.data(), grid=data.grid)
         
