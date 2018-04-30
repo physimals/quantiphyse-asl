@@ -13,7 +13,7 @@ from quantiphyse.utils import warn, debug, get_plugins, QpException
 from quantiphyse.utils.batch import Script, BatchScriptCase
 from quantiphyse.processes import Process
 
-from .oxasl import AslImage, fsl, basil
+from .oxasl import AslImage, fsl, basil, calib
 
 USE_CMDLINE = False
 
@@ -103,7 +103,6 @@ class AslPreprocProcess(AslProcess):
         debug(str(new_struc))
         struc_str = yaml.dump(new_struc)
         self.ivm.add_extra("ASL_STRUCTURE_" + output_name, struc_str)
-
 
 class BasilProcess(AslProcess):
     """
@@ -336,3 +335,35 @@ class MultiphaseProcess(MacroProcess):
         self.script.cases = [case, ]
         self.status = Process.RUNNING
         self.script.run()
+
+class AslCalibProcess(Process):
+    """
+    ASL calibration process
+    """
+    PROCESS_NAME = "AslCalib"
+
+    def run(self, options):
+        #calib(perf_data, calib_data, output_name, method, multiplier=1.0, var=False, log=sys.stdout, **kwargs):
+        data = self.get_data(options)
+        img = fsl.Image(data.name, data=data.raw())
+
+        roi = self.get_roi(options, data.grid)
+
+        output_name = options.pop("output-name", data.name + "_calib")
+        calib_name = options.pop("calib-data")
+        if calib_name not in self.ivm.data:
+            raise QpException("Calibration data not found: %s" % calib_name)
+        else:
+            calib_img = fsl.Image(calib_name, data=self.ivm.data[calib_name].resample(data.grid).raw())
+
+        method = options.pop("method", None)
+        if method is None:
+            raise QpException("Calibration method must be specified")
+        elif method not in ("voxelwise", "refregion"):
+            raise QpException("Calibration method must be voxelwise or refregion")
+        
+        logbuf = StringIO()
+        calibrated = calib(img, calib_img, output_name, method, log=logbuf, **options)
+        self.log = logbuf.getvalue()
+        self.ivm.add_data(name=calibrated.iname, data=calibrated.data(), grid=data.grid)
+        

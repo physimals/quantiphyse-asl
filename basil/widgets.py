@@ -13,7 +13,7 @@ from quantiphyse.gui.widgets import QpWidget, RoiCombo, OverlayCombo, Citation, 
 from quantiphyse.utils import debug, warn
 from quantiphyse.utils.exceptions import QpException
 
-from .process import AslDataProcess, AslPreprocProcess, BasilProcess
+from .process import AslDataProcess, AslPreprocProcess, BasilProcess, AslCalibProcess
 
 from ._version import __version__
 from .oxasl import AslImage
@@ -578,7 +578,7 @@ class AslDataWidget(QpWidget):
     Widget which lets you define the structure of an ASL dataset
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL Structure", icon="asl", group="ASL", desc="Define the structure of an ASL dataset", **kwargs)
+        QpWidget.__init__(self, name="ASL Structure", icon="asl.png", group="ASL", desc="Define the structure of an ASL dataset", **kwargs)
         self.groups = {
             "p" : "Tag-Control pairs", 
             "P" : "Control-Tag pairs", 
@@ -616,7 +616,7 @@ class AslPreprocWidget(QpWidget):
     Widget which lets you do basic preprocessing on ASL data
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL Preprocess", icon="asl", group="ASL", desc="Basic preprocessing on ASL data", **kwargs)
+        QpWidget.__init__(self, name="ASL Preprocess", icon="asl.png", group="ASL", desc="Basic preprocessing on ASL data", **kwargs)
         self.process = AslPreprocProcess(self.ivm)
         self.output_name_edited = False
 
@@ -722,7 +722,7 @@ class AslBasilWidget(QpWidget):
     Widget to do model fitting on ASL data
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL Model fitting", icon="asl", group="ASL", desc="Bayesian model fitting on ASL data", **kwargs)
+        QpWidget.__init__(self, name="ASL Model fitting", icon="asl.png", group="ASL", desc="Bayesian model fitting on ASL data", **kwargs)
         
     def init_ui(self):
         vbox = QtGui.QVBoxLayout()
@@ -821,7 +821,7 @@ class AslCalibWidget(QpWidget):
     Widget to do calibration on ASL data
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL Calibration", icon="asl", group="ASL", desc="Calibration of fitted ASL data", **kwargs)
+        QpWidget.__init__(self, name="ASL Calibration", icon="asl.png", group="ASL", desc="Calibration of fitted ASL data", **kwargs)
         
     def init_ui(self):
         vbox = QtGui.QVBoxLayout()
@@ -841,12 +841,13 @@ class AslCalibWidget(QpWidget):
         self.calib_img = OverlayCombo(self.ivm)
         grid.addWidget(self.calib_img, 1, 1)
 
-        self.tr = NumericOption("Sequence TR (s)", grid, ypos=2, minval=0, maxval=20, default=6, step=0.1)
+        self.tr = NumericOption("Sequence TR (s)", grid, ypos=2, minval=0, maxval=20, default=3.2, step=0.1)
         self.gain = NumericOption("Calibration gain", grid, ypos=3, minval=0, maxval=5, default=1, step=0.05)
+        self.t1t = NumericOption("Tissue T1", grid, ypos=3, minval=0, maxval=10, default=1.3, step=0.05)
 
-        grid.addWidget(QtGui.QLabel("Mask"), 1, 0)
+        grid.addWidget(QtGui.QLabel("Mask"), 4, 0)
         self.roi_combo = RoiCombo(self.ivm)
-        grid.addWidget(self.roi_combo, 1, 1)
+        grid.addWidget(self.roi_combo, 4, 1)
 
         vbox.addWidget(calib_box)
 
@@ -890,10 +891,38 @@ class AslCalibWidget(QpWidget):
         vbox.addStretch(1)
         
     def get_process(self):
-        return None
+        return AslCalibProcess(self.ivm)
 
     def get_options(self):
-        return None
+        options = {
+            "data" : self.data.currentText(),
+            "method" : "voxelwise",
+            "calib-data" : self.calib_img.currentText(),
+            "edgecorr" : True,
+            "multiplier" : 6000,
+            "gain" : self.gain.value(),
+            "tr" : self.tr.value(),
+            "t1t" : self.t1t.value(),
+            "var" : self.data_type.combo.currentIndex() == 1
+        }
+        if self.calib_method.combo.currentIndex() == 0:
+            options.update({
+                "method" : "voxelwise",
+                "alpha" : self.alpha.value(),
+            })
+        else:
+            options.update({
+                "method" : "refregion",
+                "region_type" : self.ref_type.combo.currentIndex(),
+                "roi" : self.ref_roi.currentText(),
+                "t1r" : self.ref_t1.value(),
+                "t2r" : self.ref_t2.value(),
+                "te" : self.te.value(),
+                "t1b" : self.t1b.value(),
+            })
+
+            raise NotImplementedError
+        return options
 
     def _calib_method_changed(self, idx):
         self.voxelwise_box.setVisible(idx == 0)
