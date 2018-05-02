@@ -93,7 +93,7 @@ class AslPreprocProcess(AslProcess):
             self.asldata = self.asldata.mean_across_repeats()
 
         output_name = options.pop("output-name", self.asldata.iname + "_preproc")
-        self.ivm.add_data(self.asldata.data(), name=output_name, grid=self.grid)
+        self.ivm.add_data(self.asldata.data(), name=output_name, grid=self.grid, make_current=True)
         new_struc = dict(self.struc)
         for opt in ["rpts", "tis", "taus", "order", "casl", "plds"]:
             if hasattr(self.asldata, opt):
@@ -157,16 +157,16 @@ class BasilProcess(AslProcess):
             options["casl"] = ""
             taus = self.struc["taus"]
             if min(taus) == max(taus):
-                options["tau"] = str(taus[0])
+                options["tau"] = taus[0]
             else:
                 for idx, tau in enumerate(taus):
-                    options["tau%i" % (idx+1)] = str(tau)
+                    options["tau%i" % (idx+1)] = tau
 
         # For CASL obtain TI by adding PLD to tau
         for idx, ti in enumerate(self.asldata.tis):
             if self.struc["casl"]:
                 ti += taus[idx]
-            options["ti%i" % (idx+1)] = str(ti)
+            options["ti%i" % (idx+1)] = ti
 
         debug("Basil options: ")
         debug(options)
@@ -198,6 +198,7 @@ class BasilProcess(AslProcess):
             if "finalMVN" in self.ivm.data:
                 self.ivm.delete_data("finalMVN")
             self.sig_finished.emit(self.status, self.log, self.exception)
+            self.ivm.set_current_data("perfusion")
 
     def _start_fabber(self, step, step_desc, infile, mask, options, prev_step=None):
         self.sig_step.emit(step_desc)
@@ -218,11 +219,13 @@ class BasilProcess(AslProcess):
         # Rename output data to match oxford_asl
         options["output-rename"] = {
             "mean_ftiss" : "perfusion",
-            "mean_deltiss" : "arrival",
+            "mean_delttiss" : "arrival",
             "mean_fblood" : "aCBV",
+            "mean_tau" : "duration",
             "std_ftiss" : "perfusion_std",
-            "std_deltiss" : "arrival_std",
+            "std_delttiss" : "arrival_std",
             "std_fblood" : "aCBV_std",
+            "std_tau" : "duration_std",
         }
 
         if prev_step is not None:
@@ -231,7 +234,7 @@ class BasilProcess(AslProcess):
 
         debug("Basil: Fabber options")
         for k in sorted(options.keys()):
-            debug("%s=%s" % (k, str(options[k])))
+            debug("%s=%s (%s)" % (k, str(options[k]), type(options[k])))
 
         self.log += step_desc + "\n\n"
         self.fabber.execute(options)
@@ -343,27 +346,32 @@ class AslCalibProcess(Process):
     PROCESS_NAME = "AslCalib"
 
     def run(self, options):
-        #calib(perf_data, calib_data, output_name, method, multiplier=1.0, var=False, log=sys.stdout, **kwargs):
         data = self.get_data(options)
         img = fsl.Image(data.name, data=data.raw())
 
         roi = self.get_roi(options, data.grid)
+        roi_img = fsl.Image(roi.name, data=roi.raw())
 
-        output_name = options.pop("output-name", data.name + "_calib")
         calib_name = options.pop("calib-data")
         if calib_name not in self.ivm.data:
             raise QpException("Calibration data not found: %s" % calib_name)
         else:
             calib_img = fsl.Image(calib_name, data=self.ivm.data[calib_name].resample(data.grid).raw())
 
+        ref_roi_name = options.pop("ref-roi", None)
+        if ref_roi_name is not None:
+            if ref_roi_name not in self.ivm.rois:
+                raise QpException("Reference ROI not found: %s" % calib_name)
+            else:
+                ref_roi_img = fsl.Image(ref_roi_name, data=self.ivm.rois[ref_roi_name].resample(data.grid).raw())
+        else:
+            ref_roi_img = None
+
         method = options.pop("method", None)
-        if method is None:
-            raise QpException("Calibration method must be specified")
-        elif method not in ("voxelwise", "refregion"):
-            raise QpException("Calibration method must be voxelwise or refregion")
-        
+        output_name = options.pop("output-name", data.name + "_calib")
+
         logbuf = StringIO()
-        calibrated = calib(img, calib_img, method, output_name, log=logbuf, **options)
+        calibrated = calib(img, calib_img, method, output_name=output_name, brain_mask=roi_img, ref_mask=ref_roi_img, log=logbuf, **options)
         self.log = logbuf.getvalue()
-        self.ivm.add_data(name=calibrated.iname, data=calibrated.data(), grid=data.grid)
+        self.ivm.add_data(name=calibrated.iname, data=calibrated.data(), grid=data.grid, make_current=True)
         
