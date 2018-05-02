@@ -17,6 +17,7 @@ from .process import AslDataProcess, AslPreprocProcess, BasilProcess, AslCalibPr
 
 from ._version import __version__
 from .oxasl import AslImage
+from .oxasl.calib import get_tissue_defaults
 
 ORDER_LABELS = {
     "r" : ("Repeat ", "R", "Repeats"), 
@@ -47,7 +48,6 @@ class AslDataPreview(QtGui.QWidget):
             "p" : (128, 255, 128, 128),
             "m" : (128, 255, 128, 128),
         }
-        
     
     def set_order(self, order):
         """ Set the data order, e.g. 'prt' = TC pairs, repeats, TIs/PLDs"""
@@ -830,52 +830,6 @@ class AslCalibWidget(QpWidget):
         title = TitleWidget(self, help="asl", subtitle="ASL calibration v%s" % __version__)
         vbox.addWidget(title)
               
-        calib_box = QtGui.QGroupBox("Calibration")
-        grid = QtGui.QGridLayout()
-        calib_box.setLayout(grid)
-
-        self.calib_method = ChoiceOption("Calibration method", grid, ypos=0, choices=["Voxelwise", "Reference region"])
-        self.calib_method.combo.currentIndexChanged.connect(self._calib_method_changed)
-        
-        grid.addWidget(QtGui.QLabel("Calibration image"), 1, 0)
-        self.calib_img = OverlayCombo(self.ivm)
-        grid.addWidget(self.calib_img, 1, 1)
-
-        self.tr = NumericOption("Sequence TR (s)", grid, ypos=2, minval=0, maxval=20, default=3.2, step=0.1)
-        self.gain = NumericOption("Calibration gain", grid, ypos=3, minval=0, maxval=5, default=1, step=0.05)
-        self.t1t = NumericOption("Tissue T1", grid, ypos=3, minval=0, maxval=10, default=1.3, step=0.05)
-
-        grid.addWidget(QtGui.QLabel("Mask"), 4, 0)
-        self.roi_combo = RoiCombo(self.ivm)
-        grid.addWidget(self.roi_combo, 4, 1)
-
-        vbox.addWidget(calib_box)
-
-        self.voxelwise_box = QtGui.QGroupBox("Voxelwise calibration")
-        grid = QtGui.QGridLayout()
-        self.voxelwise_box.setLayout(grid)
-        self.alpha = NumericOption("Inversion efficiency", grid, ypos=0, minval=0, maxval=1, default=0.98, step=0.05)
-        vbox.addWidget(self.voxelwise_box)
-
-        self.refregion_box = QtGui.QGroupBox("Reference region calibration")
-        grid = QtGui.QGridLayout()
-        self.refregion_box.setLayout(grid)
-        self.ref_type = ChoiceOption("Reference type", grid, ypos=0, choices=["CSF", "WM", "GM", "None"])
-
-        grid.addWidget(QtGui.QLabel("ROI"), 1, 0)
-        self.ref_roi = RoiCombo(self.ivm)
-        grid.addWidget(self.ref_roi, 1, 1)
-        # TODO pick specific region of ROI
-
-        self.ref_t1 = NumericOption("Reference T1 (s)", grid, ypos=2, minval=0, maxval=10, default=4.3, step=0.1)
-        self.te = NumericOption("Sequence TE (ms)", grid, ypos=3, minval=0, maxval=100, default=0, step=5)
-        self.ref_t2 = NumericOption("Reference T2 (ms)", grid, ypos=4, minval=0, maxval=2000, default=750, step=50)
-        self.t1b = NumericOption("Blood T1 (s)", grid, ypos=5, minval=0, maxval=2000, default=150, step=50)
-        # TODO sensitivity correction
-
-        self.refregion_box.setVisible(False)
-        vbox.addWidget(self.refregion_box)
-
         self.data_box = QtGui.QGroupBox("Data to calibrate")
         grid = QtGui.QGridLayout()
         grid.addWidget(QtGui.QLabel("Data"), 0, 0)
@@ -883,45 +837,109 @@ class AslCalibWidget(QpWidget):
         grid.addWidget(self.data, 0, 1)
         self.data_type = ChoiceOption("Data type", grid, ypos=1, choices=["Perfusion", "Perfusion variance"])
         self.data_box.setLayout(grid)
+
+        grid.addWidget(QtGui.QLabel("Data ROI"), 2, 0)
+        self.roi = RoiCombo(self.ivm)
+        grid.addWidget(self.roi, 2, 1)
+
+        self.calib_method = ChoiceOption("Calibration method", grid, ypos=3, choices=["Voxelwise", "Reference region"])
         vbox.addWidget(self.data_box)
         # TODO calibrate multiple data sets
+
+        calib_box = QtGui.QGroupBox("Calibration Data")
+        grid = QtGui.QGridLayout()
+        calib_box.setLayout(grid)
+
+        grid.addWidget(QtGui.QLabel("Calibration image"), 0, 0)
+        self.calib_img = OverlayCombo(self.ivm)
+        grid.addWidget(self.calib_img, 0, 1)
+
+        self.tr = NumericOption("Sequence TR (s)", grid, ypos=1, minval=0, maxval=20, default=3.2, step=0.1)
+        self.gain = NumericOption("Calibration gain", grid, ypos=3, minval=0, maxval=5, default=1, step=0.05)
+        self.alpha = NumericOption("Inversion efficiency", grid, ypos=4, minval=0, maxval=1, default=0.98, step=0.05)
+        self.calib_method.combo.currentIndexChanged.connect(self._calib_method_changed)
+        
+        vbox.addWidget(calib_box)
+
+        self.voxelwise_box = QtGui.QGroupBox("Voxelwise calibration")
+        grid = QtGui.QGridLayout()
+        self.t1t = NumericOption("Tissue T1", grid, ypos=0, minval=0, maxval=10, default=1.3, step=0.05)
+        self.pct = NumericOption("Tissue partition coefficient", grid, ypos=1, minval=0, maxval=5, default=0.9, step=0.05)
+        self.voxelwise_box.setLayout(grid)
+        vbox.addWidget(self.voxelwise_box)
+
+        self.refregion_box = QtGui.QGroupBox("Reference region calibration")
+        # TODO switch T1/T2/PC defaults on tissue type
+        grid = QtGui.QGridLayout()
+        self.refregion_box.setLayout(grid)
+        self.ref_type = ChoiceOption("Reference type", grid, ypos=0, choices=["CSF", "WM", "GM", "Custom"])
+        self.ref_type.combo.currentIndexChanged.connect(self._ref_tiss_changed)
+
+        grid.addWidget(QtGui.QLabel("Reference ROI"), 1, 0)
+        self.ref_roi = RoiCombo(self.ivm)
+        grid.addWidget(self.ref_roi, 1, 1)
+        # TODO pick specific region of ROI
+
+        self.ref_t1 = NumericOption("Reference T1 (s)", grid, ypos=2, minval=0, maxval=10, default=4.3, step=0.1)
+        self.ref_t2 = NumericOption("Reference T2 (ms)", grid, ypos=3, minval=0, maxval=2000, default=750, step=50)
+        self.ref_pc = NumericOption("Reference partition coefficient (ms)", grid, ypos=4, minval=0, maxval=5, default=1.15, step=0.05)
+        self.te = NumericOption("Sequence TE (ms)", grid, ypos=5, minval=0, maxval=100, default=0, step=5)
+        self.t1b = NumericOption("Blood T1 (s)", grid, ypos=6, minval=0, maxval=2000, default=150, step=50)
+        # TODO sensitivity correction
+
+        self.refregion_box.setVisible(False)
+        vbox.addWidget(self.refregion_box)
 
         runbox = RunBox(self.get_process, self.get_options, title="Run calibration", save_option=True)
         vbox.addWidget(runbox)
         vbox.addStretch(1)
         
+    def _ref_tiss_changed(self):
+        ref_type = self.ref_type.combo.currentText()
+        if ref_type != "Custom":
+            t1, t2, t2star, pc = get_tissue_defaults(ref_type)
+            self.ref_t1.spin.setValue(t1)
+            self.ref_t2.spin.setValue(t2)
+            self.ref_pc.spin.setValue(pc)   
+        else:
+            # Do nothing - user must choose their own values
+            pass
+
+    def batch_options(self):
+        return "AslCalib", self.get_options()
+    
     def get_process(self):
         return AslCalibProcess(self.ivm)
 
     def get_options(self):
         options = {
             "data" : self.data.currentText(),
-            "method" : "voxelwise",
+            "roi" : self.roi.currentText(),
             "calib-data" : self.calib_img.currentText(),
-            "edgecorr" : True,
             "multiplier" : 6000,
+            "alpha" : self.alpha.value(),
             "gain" : self.gain.value(),
             "tr" : self.tr.value(),
-            "t1t" : self.t1t.value(),
             "var" : self.data_type.combo.currentIndex() == 1
         }
         if self.calib_method.combo.currentIndex() == 0:
             options.update({
                 "method" : "voxelwise",
-                "alpha" : self.alpha.value(),
+                "t1t" : self.t1t.value(),
+                "pct" : self.pct.value(),
+                "edgecorr" : True,
             })
         else:
             options.update({
                 "method" : "refregion",
-                "region_type" : self.ref_type.combo.currentIndex(),
-                "roi" : self.ref_roi.currentText(),
+                "tissref" : self.ref_type.combo.currentText(),
+                "ref-roi" : self.ref_roi.currentText(),
                 "t1r" : self.ref_t1.value(),
                 "t2r" : self.ref_t2.value(),
+                "pcr" : self.ref_pc.value(),
                 "te" : self.te.value(),
                 "t1b" : self.t1b.value(),
             })
-
-            raise NotImplementedError
         return options
 
     def _calib_method_changed(self, idx):
