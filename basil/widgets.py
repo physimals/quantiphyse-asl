@@ -13,7 +13,7 @@ from quantiphyse.gui.widgets import QpWidget, RoiCombo, OverlayCombo, Citation, 
 from quantiphyse.utils import debug, warn
 from quantiphyse.utils.exceptions import QpException
 
-from .process import AslDataProcess, AslPreprocProcess, BasilProcess, AslCalibProcess
+from .process import AslDataProcess, AslPreprocProcess, BasilProcess, AslCalibProcess, AslMultiphaseProcess
 
 from ._version import __version__
 from .oxasl import AslImage
@@ -945,3 +945,104 @@ class AslCalibWidget(QpWidget):
     def _calib_method_changed(self, idx):
         self.voxelwise_box.setVisible(idx == 0)
         self.refregion_box.setVisible(idx == 1)
+
+class AslMultiphaseWidget(QpWidget):
+    """
+    Widget to do multiphase model fitting on ASL data
+    """
+    def __init__(self, **kwargs):
+        QpWidget.__init__(self, name="Multiphase ASL", icon="asl.png", group="ASL", desc="Bayesian Modelling for Multiphase Arterial Spin Labelling MRI", **kwargs)
+        
+    def init_ui(self):
+        vbox = QtGui.QVBoxLayout()
+        self.setLayout(vbox)
+
+        try:
+            self.process = BasilProcess(self.ivm)
+        except QpException, e:
+            self.process = None
+            vbox.addWidget(QtGui.QLabel(str(e)))
+            return
+        
+        title = TitleWidget(self, help="asl", subtitle="Bayesian pre-processing for Multiphase Arterial Spin Labelling MRI %s" % __version__)
+        vbox.addWidget(title)
+              
+        cite = Citation(FAB_CITE_TITLE, FAB_CITE_AUTHOR, FAB_CITE_JOURNAL)
+        vbox.addWidget(cite)
+
+        self.tabs = QtGui.QTabWidget()
+        vbox.addWidget(self.tabs)
+
+        self.struc_widget = AslStrucWidget(self.ivm, parent=self)
+        self.struc_widget.data_combo.currentIndexChanged.connect(self._data_changed)
+        self.tabs.addTab(self.struc_widget, "Data Structure")
+
+        analysis_tab = QtGui.QWidget()
+        grid = QtGui.QGridLayout()
+        analysis_tab.setLayout(grid)
+
+        #grid.addWidget(QtGui.QLabel("Output name"), 0, 0)
+        #self.output_name_edit = QtGui.QLineEdit()
+        #grid.addWidget(self.output_name_edit, 0, 1)
+        grid.addWidget(QtGui.QLabel("Mask"), 1, 0)
+        self.roi = RoiCombo(self.ivm)
+        grid.addWidget(self.roi, 1, 1)
+
+        self.biascorr_cb = QtGui.QCheckBox("Apply bias correction")
+        self.biascorr_cb.setChecked(True)
+        self.biascorr_cb.stateChanged.connect(self._biascorr_changed)
+        grid.addWidget(self.biascorr_cb, 2, 0)
+
+        self.num_sv = NumericOption("Number of supervoxels", grid, ypos=3, intonly=True, minval=1, default=8)
+        self.sigma = NumericOption("Supervoxel pre-smoothing (mm)", grid, ypos=4, minval=0, default=0.5, decimals=1, step=0.1)
+        self.compactness = NumericOption("Supervoxel compactness", grid, ypos=5, minval=0, default=0.1, decimals=2, step=0.05)
+        self.verbose_cb = QtGui.QCheckBox("Keep interim results")
+        grid.addWidget(self.verbose_cb, 6, 0)
+
+        grid.setRowStretch(7, 1)
+        self.tabs.addTab(analysis_tab, "Analysis Options")
+
+        runbox = RunBox(self.get_process, self.get_options, title="Run Multiphase modelling", save_option=True)
+        vbox.addWidget(runbox)
+        vbox.addStretch(1)
+
+    def activate(self):
+        self._data_changed()
+
+    def _data_changed(self):
+        pass
+
+    def _biascorr_changed(self):
+        biascorr = self.biascorr_cb.isChecked()
+        self.num_sv.spin.setVisible(biascorr)
+        self.sigma.spin.setVisible(biascorr)
+        self.compactness.spin.setVisible(biascorr)
+        self.num_sv.label.setVisible(biascorr)
+        self.sigma.label.setVisible(biascorr)
+        self.compactness.label.setVisible(biascorr)
+        self.verbose_cb.setVisible(biascorr)
+
+    def batch_options(self):
+        return "AslMultiphase", self.get_options()
+
+    def get_process(self):
+        return AslMultiphaseProcess(self.ivm)
+
+    def _infer(self, options, param, selected):
+        options["infer%s" % param] = selected
+
+    def get_options(self):
+        # General defaults
+        options = self.struc_widget.get_options()
+        options["roi"] = self.roi.currentText()
+        options["biascorr"] = self.biascorr_cb.isChecked()
+        if options["biascorr"]:
+            options["n-supervoxels"] = self.num_sv.value()
+            options["sigma"] = self.sigma.value()
+            options["compactness"] = self.compactness.value()
+            options["keep-temp"] = self.verbose_cb.isChecked()
+            
+        for item in options.items():
+            debug("%s: %s" % item)
+        
+        return options

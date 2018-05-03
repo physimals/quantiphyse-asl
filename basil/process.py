@@ -261,21 +261,24 @@ class BasilProcess(AslProcess):
         
 class MacroProcess(Process):
 
-    def __init__(self, ivm, yaml_code, **kwargs):
-        self.script = Script(ivm=ivm, code=yaml_code)
+    def __init__(self, ivm, yaml_code=None, **kwargs):
+        super(MacroProcess, self).__init__(ivm, **kwargs)
+        if yaml_code is not None:
+            self.set_script(yaml_code)
+
+    def set_script(self, yaml_code):
+        self.script = Script(ivm=self.ivm, code=yaml_code)
         self.script.sig_start_process.connect(self._start_process)
         self.script.sig_done_process.connect(self._done_process)
         self.script.sig_progress.connect(self._progress)
         self.script.sig_finished.connect(self._done_script)
-        super(MacroProcess, self).__init__(ivm, worker_fn=None, **kwargs)
 
     def run(self, _):
         self.status = Process.RUNNING
         self.script.run()
 
     def cancel(self):
-        if self._current_process is not None:
-            self._current_process.cancel()
+        self.script.cancel()
         
     def _start_process(self, process, params):
         self.start = time.time()
@@ -301,37 +304,53 @@ class MacroProcess(Process):
             # emit sig_progress scaling by number of steps
             self.sig_progress.emit(complete)
 
-    def _done_script(self):
+    def _done_script(self, status, log, exception):
         if self.status == Process.RUNNING:
             self.log += "Script finished\n"
             self.status = Process.SUCCEEDED
             self.sig_finished.emit(self.status, self.log, self.exception)
         
-from .multiphase_template import MULTIPHASE_YAML
+from .multiphase_template import BIASCORR_MC_YAML, BASIC_YAML, DELETE_TEMP
 
-class MultiphaseProcess(MacroProcess):
+class AslMultiphaseProcess(MacroProcess):
 
-    PROCESS_NAME = "MultiphaseAsl"
+    PROCESS_NAME = "AslMultiphase"
 
     def __init__(self, ivm, **kwargs):
-        MacroProcess.__init__(self, ivm, MULTIPHASE_YAML, **kwargs)
+        MacroProcess.__init__(self, ivm, BIASCORR_MC_YAML, **kwargs)
 
     def run(self, options):
         data = self.get_data(options)
+        
+        biascorr = options.pop("biascorr", True)
+        if biascorr:
+            template = BIASCORR_MC_YAML
+            if not options.pop("keep-temp", False):
+                template += DELETE_TEMP
+            self.set_script(template)
+        else:
+            self.set_script(BASIC_YAML)
+
+        roi = options.pop("roi", None)
+        nphases = options.pop("nphases")
         case_params = {
             "Fabber" : {
                 "data" : data.name,
-                "roi" : options.pop("roi", None),
-                "nphases" : options.pop("nphases"),
-            },
-            "MeanValues" : {
-                "Id" : "MC",
-                "data" : data.name,
+                "roi" : roi,
+                "nph" : nphases,
             },
             "Supervoxels" : {
+                "roi" : roi,
                 "sigma" : options.pop("sigma", 0),
                 "n-supervoxels" : options.pop("n-supervoxels", 8),
                 "compactness" : options.pop("compactness", 0.01),
+            },
+            "MeanValues_MCCORR" : {
+                "data" : data.name,
+            },
+            "Fabber_MCCORR" : {
+                "roi" : roi,
+                "nph" : nphases,
             },
         }
         case = BatchScriptCase("MultiphaseCase", case_params)
