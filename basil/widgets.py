@@ -6,7 +6,6 @@ Copyright (c) 2013-2018 University of Oxford
 
 from __future__ import division, unicode_literals, absolute_import, print_function
 
-import yaml
 from PySide import QtCore, QtGui
 
 from quantiphyse.gui.widgets import QpWidget, RoiCombo, OverlayCombo, Citation, TitleWidget, ChoiceOption, NumericOption, OrderList, OrderListButtons, NumberGrid, RunBox
@@ -36,9 +35,9 @@ class AslDataPreview(QtGui.QWidget):
     """
     Visual preview of the structure of an ASL data set
     """
-    def __init__(self, order, parent=None):
+    def __init__(self, order, ntis=3, nrpts=3, parent=None):
         QtGui.QWidget.__init__(self, parent)
-        self.set_order(order)
+        self.set_order(order, ntis, nrpts)
         self.hfactor = 0.95
         self.vfactor = 0.95
         self.cols = {
@@ -49,9 +48,12 @@ class AslDataPreview(QtGui.QWidget):
             "m" : (128, 255, 128, 128),
         }
     
-    def set_order(self, order):
+    def set_order(self, order, ntis=3, nrpts=3):
         """ Set the data order, e.g. 'prt' = TC pairs, repeats, TIs/PLDs"""
         self.order = order
+        if ntis < 1: ntis = 3
+        if nrpts < 1: nrpts = 3
+        self.num = {"t" : ntis, "r" : nrpts, "m" : 8}
         self.repaint()
         self.setFixedHeight((self.fontMetrics().height() + 2)*len(self.order))
 
@@ -87,12 +89,14 @@ class AslDataPreview(QtGui.QWidget):
                     p.drawText(ox+c*w, oy, w-1, height, QtCore.Qt.AlignHCenter, label[c])
                     self._draw_groups(p, groups[1:], ox+c*w, oy+height, w, height)
             else:
-                w = 2*width/5
-                for c in range(2):
+                num = self.num[group]
+                w = 2*width/min(2*num, 5)
+                for c in range(min(2, num)):
                     p.fillRect(ox+c*w, oy, w-1, height-1, QtGui.QBrush(QtGui.QColor(*col)))
                     p.drawText(ox+c*w, oy, w-1, height, QtCore.Qt.AlignHCenter, label + str(c+1))
                     self._draw_groups(p, groups[1:], ox+c*w, oy+height, w, height)
-                self._draw_groups(p, groups, ox+2*w, oy, w/2, height, cont=True)
+                if num > 2:
+                    self._draw_groups(p, groups, ox+2*w, oy, w/2, height, cont=True)
 
 class AslStrucCheck(QtGui.QWidget):
     """
@@ -128,14 +132,13 @@ class AslStrucCheck(QtGui.QWidget):
             self.setVisible(False)
         else:
             self.setVisible(True)
-            struc = self.ivm.extras.get("ASL_STRUCTURE_" + data_name, None)
-            if struc is None:
+            self.struc = self.ivm.data[data_name].metadata.get("AslData", None)
+            if self.struc is None:
                 self.text.setText("You need to define the structure of your ASL data first\nSee the 'ASL Structure' widget")
                 self.icon.setPixmap(self.warn_icon.pixmap(32, 32))
                 self.setStyleSheet(
                     """QWidget { background-color: orange; color: black; padding: 5px 5px 5px 5px;}""")
             else:
-                self.struc = yaml.load(struc)
                 casl = self.struc.get("casl", True)
                 text = "Asl structure found - "
                 text += "Order: %s\n" % self._order_readable(self.struc.get("order", ""))
@@ -371,7 +374,12 @@ class AslStrucWidget(QtGui.QWidget):
             if self.group_list not in ignore:
                 self.group_list.setItems([self.groups[g] for g in order])
             
-            self.data_preview.set_order(order)
+            # Determine number of TIs and number of repeats so we can draw the preview
+            # accurately. If we're not sure, use a single TI and 3 repeats (because
+            # anything over 2 is drawn as 2 repeats + ellipsis)
+            ntis = len(self.struc.get("tis", [1.0]))
+            nrpts = self.struc.get("rpts", [3])[0]
+            self.data_preview.set_order(order, ntis=ntis, nrpts=nrpts)
             
             # Repeats
             rpts = self.struc.get("rpts", None)
@@ -522,17 +530,17 @@ class AslStrucWidget(QtGui.QWidget):
         """ 
         Load previously defined structure information, if any
         """
-        asl_datastruct = self.ivm.extras.get("ASL_STRUCTURE_" + data_name, None)
-        if asl_datastruct is not None:
-            self.struc = yaml.load(asl_datastruct)
-            debug("Existing structure for", data_name)
-            debug(self.struc)
-        else:
-            # Use defaults below
-            debug("Using default structure")
-            self.struc = dict(self.process.default_struc)
-            self.save_structure()
-        self._update_ui()
+        if data_name in self.ivm.data:
+            self.struc = self.ivm.data[data_name].metadata.get("AslData", None)
+            if self.struc is not None:
+                debug("Existing structure for", data_name)
+                debug(self.struc)
+            else:
+                # Use defaults below
+                debug("Using default structure")
+                self.struc = dict(self.process.default_struc)
+                self.save_structure()
+            self._update_ui()
 
     def save_structure(self):
         """

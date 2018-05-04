@@ -36,11 +36,7 @@ class AslProcess(Process):
 
         # Get already defined structure if there is one. Override it with
         # specified structure options
-        struc_str = self.ivm.extras.get("ASL_STRUCTURE_" + data.name, None)
-        if struc_str is not None:
-            self.struc = yaml.load(struc_str)
-        else:
-            self.struc = {}
+        self.struc = data.metadata.get("AslData", {})
             
         for opt in ["order", "rpts", "taus", "casl", "tis", "plds", "nphases"]:
             v = options.pop(opt, None)
@@ -61,8 +57,7 @@ class AslProcess(Process):
         self.grid = data.grid
                        
         # On success, set structure metadata so other widgets/processes can use it
-        struc_str = yaml.dump(self.struc)
-        self.ivm.add_extra("ASL_STRUCTURE_" + data.name, struc_str)
+        data.metadata["AslData"] = self.struc
 
 class AslDataProcess(AslProcess):
     """
@@ -101,8 +96,7 @@ class AslPreprocProcess(AslProcess):
 
         debug("New structure is")
         debug(str(new_struc))
-        struc_str = yaml.dump(new_struc)
-        self.ivm.add_extra("ASL_STRUCTURE_" + output_name, struc_str)
+        self.ivm.data[output_name].metadata["AslData"] = new_struc
 
 class BasilProcess(AslProcess):
     """
