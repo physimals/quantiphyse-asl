@@ -302,7 +302,7 @@ class MacroProcess(Process):
         if self.status == Process.RUNNING:
             self.log += "Script finished\n"
             self.status = Process.SUCCEEDED
-            self.sig_finished.emit(self.status, self.log, self.exception)
+            self._complete()
         
 from .multiphase_template import BIASCORR_MC_YAML, BASIC_YAML, DELETE_TEMP
 
@@ -351,6 +351,9 @@ class AslMultiphaseProcess(MacroProcess):
         self.script.cases = [case, ]
         self.status = Process.RUNNING
         self.script.run()
+
+    def finished(self):
+        self.ivm.set_current_data("mean_mag")
 
 class AslCalibProcess(Process):
     """
