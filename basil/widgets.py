@@ -21,9 +21,9 @@ from .oxasl.calib import get_tissue_defaults
 ORDER_LABELS = {
     "r" : ("Repeat ", "R", "Repeats"), 
     "t" : ("TI ", "TI", "TIs/PLDs"),
-    "p" : (("Tag", "Control"), ("T", "C"), "TC pairs"),
-    "P" : (("Control", "Tag"), ("C", "T"), "CT pairs"),
-    "m" : ("Phase", "Ph", "Phases"),
+    "p" : (("Label", "Control"), ("L", "C"), "Label-Control pairs"),
+    "P" : (("Control", "Label"), ("C", "L"), "Control-Label pairs"),
+    "m" : ("Phase ", "Ph", "Phases"),
 }
 
 TIMING_LABELS = {
@@ -31,13 +31,19 @@ TIMING_LABELS = {
     False : "TIs",
 }
 
-class AslDataPreview(QtGui.QWidget):
+class StrucView(object):
+    sig_struc_changed = QtCore.Signal(object)
+
+    def set_data(self, data):
+        pass
+
+class AslDataPreview(QtGui.QWidget, StrucView):
     """
     Visual preview of the structure of an ASL data set
     """
-    def __init__(self, order, ntis=3, nrpts=3, parent=None):
-        QtGui.QWidget.__init__(self, parent)
-        self.set_order(order, ntis, nrpts)
+    def __init__(self, struc, grid, ypos):
+        QtGui.QWidget.__init__(self)
+        self.set_struc(struc)
         self.hfactor = 0.95
         self.vfactor = 0.95
         self.cols = {
@@ -47,13 +53,19 @@ class AslDataPreview(QtGui.QWidget):
             "p" : (128, 255, 128, 128),
             "m" : (128, 255, 128, 128),
         }
+        grid.addWidget(self, ypos, 0, 1, 3)
     
-    def set_order(self, order, ntis=3, nrpts=3):
+    def set_struc(self, struc):
         """ Set the data order, e.g. 'prt' = TC pairs, repeats, TIs/PLDs"""
-        self.order = order
-        if ntis < 1: ntis = 3
-        if nrpts < 1: nrpts = 3
-        self.num = {"t" : ntis, "r" : nrpts, "m" : 8}
+        self.struc = struc
+        self.order = struc.get("order", "prt")
+        self.num = {
+            "t" : len(struc.get("tis", [1.0] * 3)), 
+            "r" : struc.get("rpts", [3])[0],
+            "m" : len(struc.get("phases", [1] * struc.get("nphases", 8))),
+            "p" : 2,
+            "P" : 2,
+        }
         self.repaint()
         self.setFixedHeight((self.fontMetrics().height() + 2)*len(self.order))
 
@@ -66,37 +78,47 @@ class AslDataPreview(QtGui.QWidget):
         p = QtGui.QPainter(self)
         self._draw_groups(p, self.order[::-1], ox, oy, group_width, group_height)
 
-    def _get_label(self, code, short):
+    def _get_label(self, code, num, short):
         labels = ORDER_LABELS[code]
-        if short: return labels[1]
-        return labels[0]
+        label = labels[int(short)]
+        if isinstance(label, tuple):
+            return label[num]
+        else:
+            return label + str(num+1)
         
     def _draw_groups(self, p, groups, ox, oy, width, height, cont=False):
         if not groups: return
         else:
             small = width < 150 # Heuristic
             group = groups[0]
-            label = self._get_label(group, small)
             col = self.cols[group]
             if cont:
                 p.fillRect(ox, oy, width-1, height-1, QtGui.QBrush(QtGui.QColor(*col)))
                 p.drawText(ox, oy, width-1, height, QtCore.Qt.AlignHCenter, "...")
                 self._draw_groups(p, groups[1:], ox, oy+height, width, height, cont=True)
-            elif group in ("p", "P"):
-                w = width/2
-                for c in range(2):
-                    p.fillRect(ox+c*w, oy, w-1, height-1, QtGui.QBrush(QtGui.QColor(*col)))
-                    p.drawText(ox+c*w, oy, w-1, height, QtCore.Qt.AlignHCenter, label[c])
-                    self._draw_groups(p, groups[1:], ox+c*w, oy+height, w, height)
             else:
                 num = self.num[group]
-                w = 2*width/min(2*num, 5)
-                for c in range(min(2, num)):
-                    p.fillRect(ox+c*w, oy, w-1, height-1, QtGui.QBrush(QtGui.QColor(*col)))
-                    p.drawText(ox+c*w, oy, w-1, height, QtCore.Qt.AlignHCenter, label + str(c+1))
-                    self._draw_groups(p, groups[1:], ox+c*w, oy+height, w, height)
+                # Half the width of a normal box (full with of ellipsis box)
+                w = width/min(2*num, 5)
+
+                # Draw first box
+                label = self._get_label(group, 0, small)
+                p.fillRect(ox, oy, 2*w-1, height-1, QtGui.QBrush(QtGui.QColor(*col)))
+                p.drawText(ox, oy, 2*w-1, height, QtCore.Qt.AlignHCenter, label)
+                self._draw_groups(p, groups[1:], ox, oy+height, 2*w, height)
+                ox += 2*w
+                
+                # Draw ellipsis if required
                 if num > 2:
-                    self._draw_groups(p, groups, ox+2*w, oy, w/2, height, cont=True)
+                    self._draw_groups(p, groups, ox, oy, w, height, cont=True)
+                    ox += w
+
+                # Draw last box if required
+                if num > 1:
+                    label = self._get_label(group, num-1, small)
+                    p.fillRect(ox, oy, 2*w-1, height-1, QtGui.QBrush(QtGui.QColor(*col)))
+                    p.drawText(ox, oy, 2*w-1, height, QtCore.Qt.AlignHCenter, label)
+                    self._draw_groups(p, groups[1:], ox, oy+height, 2*w, height)
 
 class AslStrucCheck(QtGui.QWidget):
     """
@@ -155,68 +177,296 @@ class AslStrucCheck(QtGui.QWidget):
                 self.setStyleSheet(
                     """QWidget { background-color: green; color: black; padding: 5px 5px 5px 5px;}""")
 
-class AslParamsGrid(NumberGrid):
-    """ Grid which displays TIs, taus and optionally variable repeats """
-    def __init__(self, tis, rpts, taus):
-        self.fixed_repeats = True
-        self.casl = True
+class NumPhases(NumericOption, StrucView):
+    def __init__(self, struc, grid, ypos):
+        NumericOption.__init__(self, "Number of Phases (evenly spaced)", grid, ypos, default=8, intonly=True, minval=2)
+        self.set_struc(struc)
+        self.sig_changed.connect(self._changed)
+    
+    def set_struc(self, struc):
+        self.struc = struc
+        order = self.struc["order"]
+        # Phase list only visible in multiphase mode
+        self.label.setVisible("m" in order)
+        self.spin.setVisible("m" in order)
+        if "m" in order:
+            self.spin.setValue(self.struc.get("nphases", 8))
+                    
+    def _changed(self):
+        self.struc["nphases"] = self.spin.value()
+        self.sig_struc_changed.emit(self)
+
+class DataOrdering(QtCore.QObject, StrucView):
+    def __init__(self, struc, grid, ypos):
+        QtCore.QObject.__init__(self)
+        grid.addWidget(QtGui.QLabel("Data grouping\n(top = outermost)"), ypos, 0, alignment=QtCore.Qt.AlignTop)
+        self.group_list = OrderList()
+        grid.addWidget(self.group_list, ypos, 1)
+        self.list_btns = OrderListButtons(self.group_list)
+        grid.addLayout(self.list_btns, ypos, 2)
+
+        # Have to set items after adding to grid or sizing doesn't work right
+        self.set_struc(struc)
+        self.group_list.sig_changed.connect(self._changed)
+    
+    def set_struc(self, struc):
+        self.struc = struc
+        order = self.struc["order"]
+        self.group_list.setItems([ORDER_LABELS[g][2] for g in order[::-1]])
+                     
+    def _changed(self):
+        order = ""
+        for item in self.group_list.items():
+            code = [k for k, v in ORDER_LABELS.items() if v[2] == item][0]
+            order += code
+
+        self.struc["order"] = order[::-1]
+        self.sig_struc_changed.emit(self)
+
+class LabelType(ChoiceOption, StrucView):
+
+    def __init__(self, struc, grid, ypos):
+        ChoiceOption.__init__(self, "Data format", grid, ypos, choices=["Label-control pairs", "Control-Label pairs", "Already subtracted", "Multiphase"])
+        self.set_struc(struc)
+        self.sig_changed.connect(self._changed)
+    
+    def set_struc(self, struc):
+        self.struc = struc
+        order = self.struc["order"]
+        if "p" in order:
+            self.combo.setCurrentIndex(0)
+        elif "P" in order:
+            self.combo.setCurrentIndex(1)
+        elif "m" in order:
+            self.combo.setCurrentIndex(3)
+        else:
+            self.combo.setCurrentIndex(2)
+                      
+    def _changed(self):
+        order = self.struc["order"]
+        idx = self.combo.currentIndex()
+
+        char = ["p", "P", "", "m"][idx]
+        order = order.replace("p", char).replace("P", char).replace("m", char)
+        if char != "" and char not in order:
+            order = char + order
+        if char == "m":
+            self.struc["nphases"] = 8
+
+        self.struc["order"] = order
+        self.sig_struc_changed.emit(self)
+
+class Labelling(ChoiceOption, StrucView):
+
+    def __init__(self, struc, grid, ypos):
+        ChoiceOption.__init__(self, "Labelling", grid, ypos, choices=["cASL/pcASL", "pASL"])
+        self.set_struc(struc)
+        self.combo.currentIndexChanged.connect(self._changed)
+    
+    def set_struc(self, struc):
+        self.struc = struc
+        self.combo.setCurrentIndex(1-int(self.struc.get("casl", True)))
+                      
+    def _changed(self):
+        self.struc["casl"] = self.combo.currentIndex() == 0
+        self.sig_struc_changed.emit(self)
+
+class Readout(ChoiceOption, StrucView):
+
+    def __init__(self, struc, grid, ypos):
+        ChoiceOption.__init__(self, "Readout", grid, ypos, choices=["3D (e.g. GRASE)", "2D (e.g. EPI)"])
+        self.set_struc(struc)
+        self.combo.currentIndexChanged.connect(self._changed)
+    
+    def set_struc(self, struc):
+        self.struc = struc
+        readout_2d = "slicedt" in self.struc
+        self.combo.setCurrentIndex(int(readout_2d))
+                      
+    def _changed(self):
+        if self.combo.currentIndex() == 0:
+            self.struc.pop("slicedt", None)
+        else:
+            self.struc["slicedt"] = None
+        
+        self.sig_struc_changed.emit(self)
+
+class SliceTime(NumericOption, StrucView):
+
+    def __init__(self, struc, grid, ypos):
+        NumericOption.__init__(self, "Time per slice (ms)", grid, ypos, default=10, decimals=2)
+        self.set_struc(struc)
+        self.spin.valueChanged.connect(self._changed)
+    
+    def set_struc(self, struc):
+        self.struc = struc
+        readout_2d = "slicedt" in self.struc
+        self.label.setVisible(readout_2d)
+        self.spin.setVisible(readout_2d)
+        if readout_2d:
+            slicedt = self.struc["slicedt"]
+            if slicedt is None:
+                slicedt = 0.01
+            self.spin.setValue(slicedt*1000) # s->ms
+            
+    def _changed(self):
+        self.struc["slicedt"] = self.spin.value() / 1000 # ms->s
+        self.sig_struc_changed.emit(self)
+
+class Multiband(QtCore.QObject, StrucView):
+
+    def __init__(self, struc, grid, ypos):
+        QtCore.QObject.__init__(self)
+        self.cb = QtGui.QCheckBox("Multiband")
+        grid.addWidget(self.cb, ypos, 0)
+        hbox = QtGui.QHBoxLayout()
+        self.slices_per_band = QtGui.QSpinBox()
+        self.slices_per_band.setMinimum(1)
+        self.slices_per_band.setValue(5)
+        hbox.addWidget(self.slices_per_band)
+        self.slices_per_band_lbl = QtGui.QLabel("slices per band")
+        hbox.addWidget(self.slices_per_band_lbl)
+        grid.addLayout(hbox, ypos, 1)
+
+        self.set_struc(struc)
+        self.slices_per_band.valueChanged.connect(self._changed)
+        self.cb.stateChanged.connect(self._changed)
+    
+    def set_struc(self, struc):
+        self.struc = struc
+        readout_2d = "slicedt" in self.struc
+        multiband = "sliceband" in self.struc
+        self.cb.setVisible(readout_2d)
+        self.cb.setChecked(multiband)
+        self.slices_per_band.setVisible(readout_2d)
+        self.slices_per_band_lbl.setVisible(readout_2d)
+        self.slices_per_band.setEnabled(multiband)
+        if multiband: 
+            self.slices_per_band.setValue(self.struc["sliceband"])
+            
+    def _changed(self):
+        self.slices_per_band.setEnabled(self.cb.isChecked())
+        if self.cb.isChecked():
+            self.struc["sliceband"] = self.slices_per_band.value()
+        else:
+            self.struc.pop("sliceband", None)
+        self.sig_struc_changed.emit(self)
+
+class RepeatsChoice(ChoiceOption, StrucView):
+
+    def __init__(self, struc, grid, ypos):
+        ChoiceOption.__init__(self, "Repeats", grid, ypos, choices=["Fixed", "Variable"])
+
+        self.set_struc(struc)
+        self.set_data(None)
+        self.sig_changed.connect(self._changed)
+    
+    def set_data(self, data):
+        self.data = data
+        self._changed()
+
+    def set_struc(self, struc):
+        self.struc = struc
+        rpts = self.struc.get("rpts", None)
+        var_rpts = rpts is not None and min(rpts) != max(rpts)
+
+    def _changed(self):
+        fixed_repeats = self.combo.currentIndex() == 0
+        if fixed_repeats:
+            self.struc.pop("rpts", None)
+        else:
+            self.struc["rpts"] = self._get_auto_repeats()
+        self.sig_struc_changed.emit(self)
+
+    def _get_auto_repeats(self):
+        if self.data is None: 
+            return 1
+        
+        nvols = self.data.nvols
+        nrpts = float(nvols) / len(self.struc["tis"])
+        if "p" in self.struc["order"].lower():
+            ntc = 2
+        elif "m" in self.struc["order"].lower():
+            if "phases" in self.struc:
+                ntc = len(self.struc["phases"])
+            elif "nphases" in self.struc:
+                ntc = self.struc["nphases"]
+            else:
+                ntc = 1
+        else: 
+            ntc = 1
+        nrpts /= ntc
+        rpts = [int(nrpts),] * len(self.struc["tis"])
+        missing = self.data.nvols - ntc*sum(rpts)
+        for idx in range(missing):
+            rpts[idx] += 1
+        return rpts
+        
+class AslParamsGrid(NumberGrid, StrucView):
+    """ 
+    Grid which displays TIs, taus and optionally variable repeats 
+    """
+
+    def __init__(self, struc, grid, ypos):
         self.tau_header = "Bolus durations"
         self.rpt_header = "Repeats"
-        NumberGrid.__init__(self, [tis, rpts, taus], 
-                            row_headers=self._headers(),
+
+        NumberGrid.__init__(self, [[1.0], [1.0], [1]],
+                            row_headers=self._headers(True, True),
                             expandable=(True, False), 
                             fix_height=True)
+
+        grid.addWidget(self, ypos, 0, 1, 3)
+        self.set_struc(struc)
+        self.sig_changed.connect(self._changed)
     
-    def set_fixed_repeats(self, fixed_repeats):
-        """ Set whether repeats should be considered fixed """
-        self.fixed_repeats = fixed_repeats
-        vals = self.values()
-        if fixed_repeats:
-            self.setValues(vals[:2], validate=False)
-        elif len(vals) == 2:
-            vals.append([0,] * len(vals[0]))
-            self.setValues(vals, validate=False, row_headers=self._headers())
+    def set_struc(self, struc):
+        self.struc = struc
 
-    def set_labelling(self, casl):
-        """ Set whether labelling is CASL/pCASL or PASL """
-        self.casl = casl
-        self._model.setVerticalHeaderLabels(self._headers())
+        rpts = self.struc.get("rpts", None)
+        var_rpts = rpts is not None
 
-    def tis(self):
-        """ Return TI values """
-        return self.values()[0]
+        grid_values = [self.struc["tis"], self.struc["taus"]]
+        if var_rpts:
+            grid_values.append(rpts)
 
-    def taus(self):
-        """ Return bolus durations """
-        return self.values()[1]
+        casl = self.struc.get("casl", True)
+        self._model.setVerticalHeaderLabels(self._headers(casl, var_rpts))
+        self.setValues(grid_values, validate=False)
 
-    def rpts(self):
-        """ Return repeats or None if fixed """
-        if self.fixed_repeats:
-            return None
-        return self.values()[2]
-
-    def _headers(self):
+    def _headers(self, casl, rpts):
         headers = []
-        headers.append(TIMING_LABELS[self.casl])
+        headers.append(TIMING_LABELS[casl])
         headers.append(self.tau_header)
-        if not self.fixed_repeats: headers.append(self.rpt_header)
+        if rpts: headers.append(self.rpt_header)
         return headers
+
+    def _changed(self):
+        try:
+            values = self.values()
+        except ValueError:
+            # Non-numeric values - don't change anything
+            return
+
+        self.struc["tis"] = values[0]
+        self.struc["taus"] = values[1]
+
+        try:
+            if len(values) > 2:
+                self.struc["rpts"] = [int(v) for v in values[2]]
+        except ValueError:
+            # Repeats are not integers - FIXME silently ignored
+            pass
+            
+        self.sig_struc_changed.emit(self)
 
 class AslStrucWidget(QtGui.QWidget):
     """
     QWidget which allows an ASL structure to be described
     """
-    def __init__(self, ivm, parent=None):
+    def __init__(self, ivm, ignore_views=(), parent=None):
         QtGui.QWidget.__init__(self, parent)
         self.ivm = ivm
-        self.groups = {
-            "p" : "Tag-Control pairs", 
-            "P" : "Control-Tag pairs", 
-            "m" : "Phases", 
-            "r" : "Repeats", 
-            "t" : "TIs"
-        }
 
         self.updating_ui = False
         self.process = AslDataProcess(self.ivm)
@@ -232,52 +482,19 @@ class AslStrucWidget(QtGui.QWidget):
         self.data_combo.currentIndexChanged.connect(self._data_changed)
         grid.addWidget(self.data_combo, 0, 1)
 
-        self.tc_combo = ChoiceOption("Data format", grid, ypos=1, choices=["Tag-control pairs", "Control-Tag pairs", "Already subtracted", "Multiphase"])
-        self.tc_combo.sig_changed.connect(self._tc_changed)
+        view_classes = [LabelType, RepeatsChoice, NumPhases, DataOrdering, AslDataPreview,
+                        Labelling, Readout, SliceTime, Multiband, AslParamsGrid]
 
-        self.rpt_combo = ChoiceOption("Repeats", grid, ypos=2, choices=["Fixed", "Variable"])
-        self.rpt_combo.sig_changed.connect(self._rpt_changed)
+        self.views = []
+        for idx, view_class in enumerate(view_classes):
+            if view_class in ignore_views: 
+                continue
+            view = view_class(self.struc, grid, ypos=idx+2)
+            view.sig_struc_changed.connect(self._struc_changed)
+            self.views.append(view)
 
-        self.nphases = NumericOption("Number of Phases (evenly spaced)", grid, ypos=3, default=8, intonly=True, minval=2)
-        self.nphases.label.setVisible(False)
-        self.nphases.spin.setVisible(False)
-        self.nphases.spin.valueChanged.connect(self._nphases_changed)
-
-        grid.addWidget(QtGui.QLabel("Data grouping\n(top = outermost)"), 4, 0, alignment=QtCore.Qt.AlignTop)
-        self.group_list = OrderList()
-        grid.addWidget(self.group_list, 4, 1)
-        self.list_btns = OrderListButtons(self.group_list)
-        grid.addLayout(self.list_btns, 4, 2)
-        # Have to set items after adding to grid or sizing doesn't work right
-        self.group_list.sig_changed.connect(self._group_list_changed)
-
-        grid.addWidget(QtGui.QLabel("Data order preview"), 5, 0)
-        self.data_preview = AslDataPreview(self.struc["order"])
-        grid.addWidget(self.data_preview, 6, 0, 1, 3)
-        
-        self.lbl_combo = ChoiceOption("Labelling", grid, ypos=7, choices=["cASL/pcASL", "pASL"])
-        self.lbl_combo.combo.currentIndexChanged.connect(self._labelling_changed)
-
-        self.readout_combo = ChoiceOption("Readout", grid, ypos=8, choices=["3D (e.g. GRASE)", "2D (e.g. EPI)"])
-        self.readout_combo.combo.currentIndexChanged.connect(self._readout_changed)
-
-        self.slice_time = NumericOption("Time per slice (ms)", grid, ypos=9, default=10, decimals=2)
-        self.slice_time.spin.valueChanged.connect(self._slice_time_changed)
-
-        self.mb_cb = QtGui.QCheckBox("Multiband")
-        self.mb_cb.stateChanged.connect(self._mb_changed)
-        grid.addWidget(self.mb_cb, 10, 0)
-
-        hbox = QtGui.QHBoxLayout()
-        self.slices_per_band = QtGui.QSpinBox()
-        self.slices_per_band.setMinimum(1)
-        self.slices_per_band.setValue(5)
-        hbox.addWidget(self.slices_per_band)
-        self.slices_per_band.valueChanged.connect(self._sliceband_changed)
-        self.slices_per_band_lbl = QtGui.QLabel("slices per band")
-        hbox.addWidget(self.slices_per_band_lbl)
-        grid.addLayout(hbox, 10, 1)
-    
+        #grid.addWidget(QtGui.QLabel("Data order preview"), 5, 0)
+       
         # Code below is for specific multiple phases
         #self.phases_lbl = QtGui.QLabel("Phases (\N{DEGREE SIGN})")
         #grid.addWidget(self.phases_lbl, 3, 0)
@@ -286,10 +503,6 @@ class AslStrucWidget(QtGui.QWidget):
         #grid.addWidget(self.phases, 3, 1)
         #self.phases.setVisible(False)
 
-        self.params_grid = AslParamsGrid(self.struc["tis"], [1,], self.struc["taus"])
-        self.params_grid.sig_changed.connect(self._params_grid_changed)
-        grid.addWidget(self.params_grid, 11, 0, 1, 3)
-        
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(2, 0)
@@ -314,36 +527,10 @@ class AslStrucWidget(QtGui.QWidget):
             idx = self.data_combo.findText(name)
             self.data_combo.setCurrentIndex(idx)
 
-    def _readout_changed(self):
-        if self.readout_combo.combo.currentIndex() == 0:
-            self.struc.pop("slicedt", None)
-        else:
-            self.struc["slicedt"] = self.slice_time.spin.value() / 1000 # ms-s
-        self._update_ui(ignore=[self.readout_combo])
-        self.save_structure()
-
-    def _slice_time_changed(self):
-        self.struc["slicedt"] = self.slice_time.spin.value() / 1000 # ms-s
-        self._update_ui(ignore=[self.slice_time])
-        self.save_structure()
-
-    def _mb_changed(self):
-        if self.mb_cb.isChecked():
-            self.struc["sliceband"] = self.slices_per_band.value()
-        else:
-            self.struc.pop("sliceband", None)
-        self._update_ui(ignore=[self.mb_cb])
-        self.save_structure()
-
-    def _sliceband_changed(self):
-        self.struc["sliceband"] = self.slices_per_band.value()
-        self._update_ui(ignore=[self.slices_per_band])
-        self.save_structure()
-
-    def _nphases_changed(self):
-        self.struc["nphases"] = self.nphases.spin.value()
-        self._update_ui(ignore=[self.nphases])
-        self.save_structure()
+    def set_struct(self, struct):
+        self.struct = struct
+        self._update_ui()
+        self._save_structure()
 
     def _update_ui(self, ignore=()):
         """ 
@@ -352,170 +539,18 @@ class AslStrucWidget(QtGui.QWidget):
         # Hack to avoid processing signals while updating UI
         self.updating_ui = True
         try:
-            # Get the order and use it to select the right contents and grouping
-            order = self.struc["order"]
-            if self.tc_combo not in ignore:
-                if "p" in order:
-                    self.tc_combo.combo.setCurrentIndex(0)
-                elif "P" in order:
-                    self.tc_combo.combo.setCurrentIndex(1)
-                elif "m" in order:
-                    self.tc_combo.combo.setCurrentIndex(3)
-                else:
-                    self.tc_combo.combo.setCurrentIndex(2)
-
-            # Phase list only visible in multiphase mode
-            if self.nphases not in ignore:
-                self.nphases.label.setVisible("m" in order)
-                self.nphases.spin.setVisible("m" in order)
-                if "m" in order:
-                    self.nphases.spin.setValue(self.struc.get("nphases", 8))
-
-            if self.group_list not in ignore:
-                self.group_list.setItems([self.groups[g] for g in order])
-            
-            # Determine number of TIs and number of repeats so we can draw the preview
-            # accurately. If we're not sure, use a single TI and 3 repeats (because
-            # anything over 2 is drawn as 2 repeats + ellipsis)
-            ntis = len(self.struc.get("tis", [1.0]))
-            nrpts = self.struc.get("rpts", [3])[0]
-            self.data_preview.set_order(order, ntis=ntis, nrpts=nrpts)
-            
-            # Repeats
-            rpts = self.struc.get("rpts", None)
-            var_rpts = rpts is not None and min(rpts) != max(rpts)
-
-            if self.params_grid not in ignore:
-                grid_values = [self.struc["tis"], self.struc["taus"]]
-                if var_rpts:
-                    grid_values.append(self.struc["rpts"])
-                self.params_grid.set_fixed_repeats(not var_rpts)
-                self.params_grid.set_labelling(self.struc["casl"])
-                self.params_grid.setValues(grid_values)
-            
-            if self.rpt_combo not in ignore:
-                self.rpt_combo.combo.setCurrentIndex(int(var_rpts))
-
-            if self.lbl_combo not in ignore:
-                self.lbl_combo.combo.setCurrentIndex(1-int(self.struc.get("casl", True)))
-
-            # Readout
-            slice_time = self.struc.get("slicedt", None)
-            slices_per_band = self.struc.get("sliceband", None)
-            readout_2d = slice_time is not None
-            multiband = slices_per_band is not None
-            if self.readout_combo not in ignore:
-                self.readout_combo.combo.setCurrentIndex(int(readout_2d))
-
-            if self.slice_time not in ignore:
-                self.slice_time.label.setVisible(readout_2d)
-                self.slice_time.spin.setVisible(readout_2d)
-                if readout_2d: self.slice_time.spin.setValue(slice_time*1000) # s->ms
-            
-            if self.mb_cb not in ignore:
-                self.mb_cb.setVisible(readout_2d)
-                self.mb_cb.setChecked(multiband)
-
-            if self.slices_per_band not in ignore:
-                self.slices_per_band.setVisible(readout_2d)
-                self.slices_per_band_lbl.setVisible(readout_2d)
-                self.slices_per_band.setEnabled(multiband)
-                if multiband: self.slices_per_band.setValue(slices_per_band)
-
-            if self.slices_per_band not in ignore:
-                self.slices_per_band.setEnabled(multiband)
-                if slices_per_band is not None:
-                    self.slices_per_band.setValue(slices_per_band)
-
+            for view in self.views:
+                if view not in ignore:
+                    view.set_struc(self.struc)
         finally:
             self.updating_ui = False
 
-    def _get_auto_repeats(self):
-        data = self.ivm.data.get(self.data_combo.currentText(), None)
-        if data is None: return 1
-
-        nvols = data.nvols
-        nrpts = nvols / len(self.struc["tis"])
-        if "p" in self.struc["order"].lower():
-            nrpts /= 2
-        elif "m" in self.struc["order"].lower():
-            nrpts /= self.nphases.value()
-        return nrpts
-
-    def _rpt_changed(self):
+    def _struc_changed(self, sender):
+        debug("struc changed", sender)
+        debug(self.struc)
         if self.updating_ui: return
-        fixed = self.rpt_combo.combo.currentIndex() == 0
-        if fixed:
-            self.struc.pop("rpts", None)
-        else:
-            self.struc["rpts"] = [self._get_auto_repeats(),] * len(self.struc["tis"])
-
-        self._update_ui(ignore=[self.rpt_combo])
-        self.save_structure()
-
-    def _labelling_changed(self):
-        """
-        Labelling method (CASL/PASL) changed
-        """
-        self.struc["casl"] = self.lbl_combo.combo.currentIndex() == 0
-        self._update_ui(ignore=[self.lbl_combo])
-        self.save_structure()
-
-    def _tc_changed(self):
-        """ 
-        Data contents (TC pairs, multiphase, subtracted, etc) changed - this can affect the order
-        """
-        if self.updating_ui: return
-
-        order = self.struc["order"]
-        idx = self.tc_combo.combo.currentIndex()
-
-        chars = {0 : "p", 1 : "P", 2: "", 3: "m"}
-        char = chars[idx]
-        order = order.replace("p", char).replace("P", char).replace("m", char)
-        if char != "" and char not in order:
-            order = char + order
-
-        self.struc["order"] = order
-        if "m" in order:
-            self.struc["nphases"] = self.nphases.spin.value()
-        else:
-            self.struc.pop("nphases", None)
-
-        self._update_ui(ignore=[self.tc_combo])
-        self.save_structure()
-
-    def _group_list_changed(self):
-        """ Grouping list changed - modify the order """
-        if self.updating_ui: return
-
-        order = ""
-        for item in reversed(self.group_list.items()):
-            code = [k for k, v in self.groups.items() if v == item][0]
-            order += code
-        self.struc["order"] = order
-        self._update_ui(ignore=[self.group_list])
-        self.save_structure()
-
-    def _params_grid_changed(self):
-        if self.updating_ui: return
-
-        try:
-            tis = self.params_grid.tis()
-            taus = self.params_grid.taus()
-            rpts = self.params_grid.rpts()
-        except ValueError:
-            # Non-numeric values - don't change anything
-            return
-
-        self.struc["tis"] = tis
-        self.struc["taus"] = taus
-        if rpts is not None:
-            # We have variable repeats
-            self.struc["rpts"] = rpts
-
-        self._update_ui(ignore=[self.params_grid])
-        self.save_structure()
+        self._update_ui(ignore=[sender])
+        self._save_structure()
 
     def _data_changed(self):
         """
@@ -523,10 +558,12 @@ class AslStrucWidget(QtGui.QWidget):
         """
         data = self.ivm.data.get(self.data_combo.currentText(), None)
         if data is not None:
-            self.load_structure(data.name)
-            self.validate()
+            self._load_structure(data.name)
+            self._validate()
+            for view in self.views:
+                view.set_data(data)
         
-    def load_structure(self, data_name):
+    def _load_structure(self, data_name):
         """ 
         Load previously defined structure information, if any
         """
@@ -539,30 +576,29 @@ class AslStrucWidget(QtGui.QWidget):
                 # Use defaults below
                 debug("Using default structure")
                 self.struc = dict(self.process.default_struc)
-                self.save_structure()
+                self._save_structure()
             self._update_ui()
 
-    def save_structure(self):
+    def _save_structure(self):
         """
         Set the structure on the dataset using AslDataProcess
         """
         debug("save", self.struc)
-        if self.validate():
+        if self._validate():
             self.process.run(self.get_options())
             debug("Saved: ", self.struc)
 
-    def validate(self):
+    def _validate(self):
         """
         Validate data against specified TIs, etc
         """
         try:
             data = self.ivm.data.get(self.data_combo.currentText(), None)
             if data is not None:
-                debug("Validate: ", self.params_grid.tis(), self.params_grid.rpts(), self.params_grid.taus(), self.struc["order"])
                 AslImage(data.name, data=data.raw(), 
-                         rpts=self.params_grid.rpts(), 
-                         tis=self.params_grid.tis(), 
-                         order=self.struc["order"], 
+                         rpts=self.struc.get("rpts", None), 
+                         tis=self.struc.get("tis", None),
+                         order=self.struc.get("order", None), 
                          nphases=self.struc.get("nphases", None))
                 self.warn_label.setVisible(False)
                 return True
@@ -587,13 +623,6 @@ class AslDataWidget(QpWidget):
     """
     def __init__(self, **kwargs):
         QpWidget.__init__(self, name="ASL Structure", icon="asl.png", group="ASL", desc="Define the structure of an ASL dataset", **kwargs)
-        self.groups = {
-            "p" : "Tag-Control pairs", 
-            "P" : "Control-Tag pairs", 
-            "m" : "Phases", 
-            "r" : "Repeats", 
-            "t" : "TIs"
-        }
         self.process = AslDataProcess(self.ivm)
         self.updating_ui = False
         self.struc = dict(self.process.default_struc)
@@ -641,7 +670,7 @@ class AslPreprocWidget(QpWidget):
 
         grid = QtGui.QGridLayout()
 
-        self.sub_cb = QtGui.QCheckBox("Tag-control subtraction")
+        self.sub_cb = QtGui.QCheckBox("Label-control subtraction")
         self.sub_cb.stateChanged.connect(self._guess_output_name)
         grid.addWidget(self.sub_cb, 4, 0)
         
@@ -683,7 +712,7 @@ class AslPreprocWidget(QpWidget):
     def _data_changed(self):
         self.output_name_edited = False
         self._guess_output_name()
-        # Tag-control differencing only if data contains TC or CT pairs
+        # Label-control differencing only if data contains LC or CL pairs
         pairs = "p" in self.struc_widget.struc["order"].lower()
         self.sub_cb.setEnabled(pairs)
         if not pairs: self.sub_cb.setChecked(False)
@@ -981,7 +1010,7 @@ class AslMultiphaseWidget(QpWidget):
         self.tabs = QtGui.QTabWidget()
         vbox.addWidget(self.tabs)
 
-        self.struc_widget = AslStrucWidget(self.ivm, parent=self)
+        self.struc_widget = AslStrucWidget(self.ivm, ignore_views=[Readout, Labelling, SliceTime, Multiband, AslParamsGrid])
         self.struc_widget.data_combo.currentIndexChanged.connect(self._data_changed)
         self.tabs.addTab(self.struc_widget, "Data Structure")
 
