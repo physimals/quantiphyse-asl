@@ -7,6 +7,8 @@ Processing:
 
   # Initial biased run
   - Fabber:
+      data: %(data)s
+      roi: %(roi)s
       model-group: asl
       model:  asl_multiphase
       method: spatialvb
@@ -18,6 +20,7 @@ Processing:
       PSP_byname3_type: M 
       max-iterations: 10
       repeats: 1
+      nph: %(nph)i
       modfn: fermi
       alpha: 70
       beta: 19
@@ -26,9 +29,10 @@ Processing:
   # ... which is used to segment 
   - Supervoxels:
       data: mean_phase
-      n-supervoxels: 8
-      compactness: 0.01
-      sigma: 0.5
+      roi: %(roi)s
+      n-supervoxels: %(n_supervoxels)i
+      compactness: %(compactness)f
+      sigma: %(sigma)f
       output-name: sv
 
   # So we do not overwrite original results
@@ -40,15 +44,15 @@ Processing:
   # Michael's suggested approach - average signal in ROI regions
   # to increase SNR and fit phase which should be less biased
   - MeanValues:
-      id: MeanValues_MCCORR
+      data: %(data)s
       roi: sv
       output-name: data_sv
 
   - Fabber:
-      id: Fabber_MCCORR
+      data: data_sv
+      roi: %(roi)s
       model-group: asl
       model:  asl_multiphase
-      data: data_sv
       method: spatialvb
       PSP_byname1: phase
       PSP_byname1_type: N 
@@ -58,6 +62,7 @@ Processing:
       PSP_byname3_type: M 
       max-iterations: 10
       repeats: 1
+      nph: %(nph)i
       modfn: fermi
       alpha: 70
       beta: 19
@@ -77,12 +82,14 @@ Processing:
       
   # Final run to fit mag and offset with fixed phase
   - Fabber:
+      data: %(data)s
+      roi: %(roi)s
       model-group: asl
       model:  asl_multiphase
       method: spatialvb
       PSP_byname1: phase 
       PSP_byname1_image: phase_prior_sv
-      PSP_byname1_prec: 10000000
+      PSP_byname1_prec: 1e6
       PSP_byname1_type: I 
       PSP_byname2: mag 
       PSP_byname2_type: M
@@ -90,6 +97,7 @@ Processing:
       PSP_byname3_type: M 
       max-iterations: 10
       repeats: 1
+      nph: %(nph)i
       modfn: fermi
       alpha: 70
       beta: 19
@@ -106,6 +114,8 @@ Processing:
 
   # Initial biased run
   - Fabber:
+      data: %(data)s
+      roi: %(roi)s
       model-group: asl
       model:  asl_multiphase
       method: spatialvb
@@ -117,6 +127,7 @@ Processing:
       PSP_byname3_type: M 
       max-iterations: 10
       repeats: 1
+      nph: %(nph)i
       modfn: fermi
       alpha: 70
       beta: 19
@@ -125,9 +136,10 @@ Processing:
   # ... which is used to segment 
   - Supervoxels:
       data: mean_phase
-      n-supervoxels: 8
-      compactness: 0.01
-      sigma: 0.5
+      roi: %(roi)s
+      n-supervoxels: %(n_supervoxels)i
+      compactness: %(compactness)f
+      sigma: %(sigma)f
       output-name: sv
 
   # So we do not overwrite original results
@@ -144,6 +156,8 @@ Processing:
       
   # Final run to fit mag and offset with fixed phase
   - Fabber:
+      data: %(data)s
+      roi: %(roi)s
       model-group: asl
       model:  asl_multiphase
       method: spatialvb
@@ -157,6 +171,7 @@ Processing:
       PSP_byname3_type: M 
       max-iterations: 10
       repeats: 1
+      nph: %(nph)i
       modfn: fermi
       alpha: 70
       beta: 19
@@ -168,6 +183,7 @@ Processing:
 # Optional template to remove temporary results
 DELETE_TEMP = """
   - Delete:
+      data_sv:
       phase_prior_sv:
       mean_phase_orig:
       mean_mag_orig:
@@ -175,6 +191,7 @@ DELETE_TEMP = """
       mean_phase_sv:
       mean_mag_sv:
       mean_offset_sv:
+      noise_means:
       sv:
 """
 
@@ -185,6 +202,8 @@ BASIC_YAML = """
 Processing:
 
   - Fabber:
+      data: %(data)s
+      roi: %(roi)s
       model-group: asl
       model:  asl_multiphase
       method: spatialvb
@@ -196,6 +215,7 @@ Processing:
       PSP_byname3_type: M 
       max-iterations: 10
       repeats: 1
+      nph: %(nph)i
       modfn: fermi
       alpha: 70
       beta: 19

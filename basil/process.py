@@ -24,7 +24,6 @@ class AslProcess(Process):
 
     def __init__(self, ivm, **kwargs):
         super(AslProcess, self).__init__(ivm, **kwargs)
-        self.default_struc = {"order" : "prt", "tis" : [1.5,], "taus" : [1.4,], "casl" : True}
         self.struc = None
         self.asldata = None
 
@@ -39,9 +38,9 @@ class AslProcess(Process):
         self.struc = data.metadata.get("AslData", {})
             
         for opt in ["order", "rpts", "taus", "casl", "tis", "plds", "nphases"]:
-            v = options.pop(opt, None)
-            if v is not None:
-                self.struc[opt] = v
+            val = options.pop(opt, None)
+            if val is not None:
+                self.struc[opt] = val
             else:
                 self.struc.pop(opt, None)
 
@@ -100,6 +99,7 @@ class AslPreprocProcess(AslProcess):
 
 class BasilProcess(AslProcess):
     """
+    Process which runs the multi-step Basil ASL model fitting method
     """
     PROCESS_NAME = "Basil"
 
@@ -108,8 +108,8 @@ class BasilProcess(AslProcess):
             self.fabber = get_plugins("processes", class_name="FabberProcess")[0](ivm)
             self.fabber.sig_finished.connect(self._fabber_finished)
             self.fabber.sig_progress.connect(self._fabber_progress)
-        except Exception, e:
-            warn(str(e))
+        except Exception as exc:
+            warn(str(exc))
             raise QpException("Fabber core library not found.\n\n You must install Fabber to use this widget")
 
         self.steps = []
@@ -124,9 +124,6 @@ class BasilProcess(AslProcess):
             # FIXME Necesssary for dummy ROI to be in the IVM
             self.ivm.add_roi(roi)
 
-        # FIXME temporary
-        self.ivm.add_data(self.asldata.data(), name=self.asldata.iname, grid=self.grid)
-        
         # Convert image options into fsl.Image objects, als check they exist in the IVM
         # Names and descriptions of options which are images
         images = {
@@ -194,7 +191,7 @@ class BasilProcess(AslProcess):
             self.sig_finished.emit(self.status, self.log, self.exception)
             self.ivm.set_current_data("perfusion")
 
-    def _start_fabber(self, step, step_desc, infile, mask, options, prev_step=None):
+    def _start_fabber(self, _, step_desc, infile, mask, options, prev_step=None):
         self.sig_step.emit(step_desc)
 
         options = dict(options)
@@ -252,105 +249,37 @@ class BasilProcess(AslProcess):
         if self.status == self.RUNNING:
             # emit sig_progress scaling by number of steps
             self.sig_progress.emit((self.step_num - 1 + complete)/len(self.steps))
-        
-class MacroProcess(Process):
 
-    def __init__(self, ivm, yaml_code=None, **kwargs):
-        super(MacroProcess, self).__init__(ivm, **kwargs)
-        if yaml_code is not None:
-            self.set_script(yaml_code)
-
-    def set_script(self, yaml_code):
-        self.script = Script(ivm=self.ivm, code=yaml_code)
-        self.script.sig_start_process.connect(self._start_process)
-        self.script.sig_done_process.connect(self._done_process)
-        self.script.sig_progress.connect(self._progress)
-        self.script.sig_finished.connect(self._done_script)
-
-    def run(self, _):
-        self.status = Process.RUNNING
-        self.script.run()
-
-    def cancel(self):
-        self.script.cancel()
-        
-    def _start_process(self, process, params):
-        self.start = time.time()
-        self.log += "Running %s\n\n" % process.proc_id
-        for key, value in params.items():
-            debug("      %s=%s" % (key, str(value)))
-                
-    def _done_process(self, process, _):
-        self.log += process.log
-        end = time.time()
-
-        if process.status == Process.SUCCEEDED:
-            self.log += "\nDONE (%.1fs)\n" % (end - self.start)
-        else:
-            self.log += "\nFAILED: %i\n" % process.status
-            self.status = process.status
-            self.exception = process.exception
-            self.sig_finished.emit(self.status, self.log, self.exception)
-
-    def _progress(self, complete):
-        debug("Progress: %f", complete)
-        if self.status == self.RUNNING:
-            # emit sig_progress scaling by number of steps
-            self.sig_progress.emit(complete)
-
-    def _done_script(self, status, log, exception):
-        if self.status == Process.RUNNING:
-            self.log += "Script finished\n"
-            self.status = Process.SUCCEEDED
-            self._complete()
-        
 from .multiphase_template import BIASCORR_MC_YAML, BASIC_YAML, DELETE_TEMP
 
-class AslMultiphaseProcess(MacroProcess):
+class AslMultiphaseProcess(Script):
 
     PROCESS_NAME = "AslMultiphase"
 
     def __init__(self, ivm, **kwargs):
-        MacroProcess.__init__(self, ivm, BIASCORR_MC_YAML, **kwargs)
+        Script.__init__(self, ivm, **kwargs)
 
     def run(self, options):
         data = self.get_data(options)
         
-        biascorr = options.pop("biascorr", True)
-        if biascorr:
+        if options.pop("biascorr", True):
             template = BIASCORR_MC_YAML
             if not options.pop("keep-temp", False):
                 template += DELETE_TEMP
-            self.set_script(template)
         else:
-            self.set_script(BASIC_YAML)
+            template = BASIC_YAML
 
-        roi = options.pop("roi", None)
-        nphases = options.pop("nphases")
-        case_params = {
-            "Fabber" : {
-                "data" : data.name,
-                "roi" : roi,
-                "nph" : nphases,
-            },
-            "Supervoxels" : {
-                "roi" : roi,
-                "sigma" : options.pop("sigma", 0),
-                "n-supervoxels" : options.pop("n-supervoxels", 8),
-                "compactness" : options.pop("compactness", 0.01),
-            },
-            "MeanValues_MCCORR" : {
-                "data" : data.name,
-            },
-            "Fabber_MCCORR" : {
-                "roi" : roi,
-                "nph" : nphases,
-            },
+        template_params = {
+            "data" : data.name,
+            "roi" : options.pop("roi", None),
+            "nph" : options.pop("nphases"),
+            "sigma" : options.pop("sigma", 0),
+            "n_supervoxels" : options.pop("n-supervoxels", 8),
+            "compactness" : options.pop("compactness", 0.01),
         }
-        case = BatchScriptCase("MultiphaseCase", case_params)
-        self.script.cases = [case, ]
-        self.status = Process.RUNNING
-        self.script.run()
+        
+        options["yaml"] = template % template_params
+        Script.run(self, options)
 
     def finished(self):
         self.ivm.set_current_data("mean_mag")
