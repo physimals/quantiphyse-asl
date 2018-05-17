@@ -31,6 +31,13 @@ TIMING_LABELS = {
     False : "TIs",
 }
 
+DEFAULT_STRUC = {
+    "order" : "prt", 
+    "tis" : [1.5,], 
+    "taus" : [1.4,], 
+    "casl" : True
+}
+
 class StrucView(object):
     sig_struc_changed = QtCore.Signal(object)
 
@@ -464,13 +471,14 @@ class AslStrucWidget(QtGui.QWidget):
     """
     QWidget which allows an ASL structure to be described
     """
-    def __init__(self, ivm, ignore_views=(), parent=None):
+    def __init__(self, ivm, parent=None, **kwargs):
         QtGui.QWidget.__init__(self, parent)
         self.ivm = ivm
+        self.default_struc = kwargs.get("default_struc", DEFAULT_STRUC)
 
         self.updating_ui = False
         self.process = AslDataProcess(self.ivm)
-        self.struc = dict(self.process.default_struc)
+        self.struc = dict(self.default_struc)
         
         vbox = QtGui.QVBoxLayout()
         self.setLayout(vbox)
@@ -487,7 +495,7 @@ class AslStrucWidget(QtGui.QWidget):
 
         self.views = []
         for idx, view_class in enumerate(view_classes):
-            if view_class in ignore_views: 
+            if view_class in kwargs.get("ignore_views", ()): 
                 continue
             view = view_class(self.struc, grid, ypos=idx+2)
             view.sig_struc_changed.connect(self._struc_changed)
@@ -575,7 +583,7 @@ class AslStrucWidget(QtGui.QWidget):
             else:
                 # Use defaults below
                 debug("Using default structure")
-                self.struc = dict(self.process.default_struc)
+                self.struc = dict(self.default_struc)
                 self._save_structure()
             self._update_ui()
 
@@ -624,8 +632,6 @@ class AslDataWidget(QpWidget):
     def __init__(self, **kwargs):
         QpWidget.__init__(self, name="ASL Structure", icon="asl.png", group="ASL", desc="Define the structure of an ASL dataset", **kwargs)
         self.process = AslDataProcess(self.ivm)
-        self.updating_ui = False
-        self.struc = dict(self.process.default_struc)
         
     def init_ui(self):
         vbox = QtGui.QVBoxLayout()
@@ -1010,7 +1016,10 @@ class AslMultiphaseWidget(QpWidget):
         self.tabs = QtGui.QTabWidget()
         vbox.addWidget(self.tabs)
 
-        self.struc_widget = AslStrucWidget(self.ivm, ignore_views=[Readout, Labelling, SliceTime, Multiband, AslParamsGrid])
+        default_struc = dict(DEFAULT_STRUC)
+        default_struc["order"] = "mrt"
+        default_struc["nphases"] = 8
+        self.struc_widget = AslStrucWidget(self.ivm, ignore_views=[RepeatsChoice, Readout, Labelling, SliceTime, Multiband, AslParamsGrid], default_struc=default_struc)
         self.struc_widget.data_combo.currentIndexChanged.connect(self._data_changed)
         self.tabs.addTab(self.struc_widget, "Data Structure")
 
@@ -1047,7 +1056,13 @@ class AslMultiphaseWidget(QpWidget):
         self._data_changed()
 
     def _data_changed(self):
-        pass
+        # Change data order to multiphase if it isn't already
+        data_name = self.struc_widget.data_combo.currentText()
+        if data_name in self.ivm.data:
+            struc = self.ivm.data[data_name].metadata.get("AslData", None)
+            if struc is not None and "m" not in struc["order"]:
+                struc["order"] = "mrt"
+                self.struc_widget.set_struct(struc)
 
     def _biascorr_changed(self):
         biascorr = self.biascorr_cb.isChecked()
