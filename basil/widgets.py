@@ -38,6 +38,30 @@ DEFAULT_STRUC = {
     "casl" : True
 }
 
+def auto_repeats(data, struc):
+    if data is None: 
+        return [1,]
+    
+    nvols = data.nvols
+    nrpts = float(nvols) / len(struc["tis"])
+    if "p" in struc["order"].lower():
+        ntc = 2
+    elif "m" in struc["order"].lower():
+        if "phases" in struc:
+            ntc = len(struc["phases"])
+        elif "nphases" in struc:
+            ntc = struc["nphases"]
+        else:
+            ntc = 1
+    else: 
+        ntc = 1
+    nrpts /= ntc
+    rpts = [int(nrpts),] * len(struc["tis"])
+    missing = data.nvols - ntc*sum(rpts)
+    for idx in range(missing):
+        rpts[idx] += 1
+    return rpts
+
 class StrucView(object):
     sig_struc_changed = QtCore.Signal(object)
 
@@ -68,7 +92,7 @@ class AslDataPreview(QtGui.QWidget, StrucView):
         self.order = struc.get("order", "prt")
         self.num = {
             "t" : len(struc.get("tis", [1.0] * 3)), 
-            "r" : struc.get("rpts", [3])[0],
+            "r" : struc.get("rpts", [struc.get("nrpts", 3)])[0],
             "m" : len(struc.get("phases", [1] * struc.get("nphases", 8))),
             "p" : 2,
             "P" : 2,
@@ -376,38 +400,20 @@ class RepeatsChoice(ChoiceOption, StrucView):
         self.struc = struc
         rpts = self.struc.get("rpts", None)
         var_rpts = rpts is not None and min(rpts) != max(rpts)
+        self.combo.setCurrentIndex(int(var_rpts))
 
     def _changed(self):
+        repeats = auto_repeats(self.data, self.struc)
         fixed_repeats = self.combo.currentIndex() == 0
         if fixed_repeats:
             self.struc.pop("rpts", None)
+            if min(repeats) == max(repeats):
+                self.struc["nrpts"] = repeats[0]
         else:
-            self.struc["rpts"] = self._get_auto_repeats()
+            self.struc.pop("nrpts", None)
+            if "rpts" not in self.struc:
+                self.struc["rpts"] = repeats
         self.sig_struc_changed.emit(self)
-
-    def _get_auto_repeats(self):
-        if self.data is None: 
-            return 1
-        
-        nvols = self.data.nvols
-        nrpts = float(nvols) / len(self.struc["tis"])
-        if "p" in self.struc["order"].lower():
-            ntc = 2
-        elif "m" in self.struc["order"].lower():
-            if "phases" in self.struc:
-                ntc = len(self.struc["phases"])
-            elif "nphases" in self.struc:
-                ntc = self.struc["nphases"]
-            else:
-                ntc = 1
-        else: 
-            ntc = 1
-        nrpts /= ntc
-        rpts = [int(nrpts),] * len(self.struc["tis"])
-        missing = self.data.nvols - ntc*sum(rpts)
-        for idx in range(missing):
-            rpts[idx] += 1
-        return rpts
         
 class AslParamsGrid(NumberGrid, StrucView):
     """ 
@@ -425,7 +431,11 @@ class AslParamsGrid(NumberGrid, StrucView):
 
         grid.addWidget(self, ypos, 0, 1, 3)
         self.set_struc(struc)
+        self.set_data(None)
         self.sig_changed.connect(self._changed)
+    
+    def set_data(self, data):
+        self.data = data
     
     def set_struc(self, struc):
         self.struc = struc
@@ -461,6 +471,12 @@ class AslParamsGrid(NumberGrid, StrucView):
         try:
             if len(values) > 2:
                 self.struc["rpts"] = [int(v) for v in values[2]]
+            else:
+                # May need to recalculate fixed repeats
+                repeats = auto_repeats(self.data, self.struc)
+                self.struc.pop("nrpts", None)
+                if min(repeats) == max(repeats):
+                    self.struc["nrpts"] = repeats[0]
         except ValueError:
             # Repeats are not integers - FIXME silently ignored
             pass
@@ -591,7 +607,6 @@ class AslStrucWidget(QtGui.QWidget):
         """
         Set the structure on the dataset using AslDataProcess
         """
-        debug("save", self.struc)
         if self._validate():
             self.process.run(self.get_options())
             debug("Saved: ", self.struc)
@@ -614,7 +629,6 @@ class AslStrucWidget(QtGui.QWidget):
         except RuntimeError, e:
             self.warn_label.setText(str(e))
             self.warn_label.setVisible(True)
-            warn(e)
             return False
 
     def get_options(self):
