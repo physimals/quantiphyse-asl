@@ -119,6 +119,7 @@ class BasilProcess(AslProcess):
     def run(self, options):
         self.get_asldata(options)
         self.asldata = self.asldata.diff().reorder("rt")
+        self.ivm.add_data(self.asldata.data(), name=self.asldata.iname, grid=self.grid)
         roi = self.get_roi(options, self.grid)
         if roi.name not in self.ivm.rois:
             # FIXME Necesssary for dummy ROI to be in the IVM
@@ -138,7 +139,6 @@ class BasilProcess(AslProcess):
                 data = self.ivm.data.get(options[opt], self.ivm.rois.get(options[opt], None))
                 if data is not None:
                     options[opt] = fsl.Image(data.name, data=data.resample(self.grid).raw(), role=role)
-                    #options[opt] = data.resample(self.grid).raw()
                 else:
                     raise QpException("Data not found: %s" % options[opt])
 
@@ -258,6 +258,7 @@ class AslMultiphaseProcess(Script):
 
     def __init__(self, ivm, **kwargs):
         Script.__init__(self, ivm, **kwargs)
+        self._orig_roi = None
 
     def run(self, options):
         data = self.get_data(options)
@@ -269,9 +270,10 @@ class AslMultiphaseProcess(Script):
         else:
             template = BASIC_YAML
 
+        self._orig_roi = options.pop("roi", None)
         template_params = {
             "data" : data.name,
-            "roi" : options.pop("roi", None),
+            "roi" : self._orig_roi,
             "nph" : options.pop("nphases"),
             "sigma" : options.pop("sigma", 0),
             "n_supervoxels" : options.pop("n-supervoxels", 8),
@@ -282,6 +284,7 @@ class AslMultiphaseProcess(Script):
         Script.run(self, options)
 
     def finished(self):
+        self.ivm.set_current_roi(self._orig_roi)
         self.ivm.set_current_data("mean_mag")
 
 class AslCalibProcess(Process):
@@ -303,20 +306,20 @@ class AslCalibProcess(Process):
         else:
             calib_img = fsl.Image(calib_name, data=self.ivm.data[calib_name].resample(data.grid).raw())
 
+        calib_options = {}
+
         ref_roi_name = options.pop("ref-roi", None)
         if ref_roi_name is not None:
             if ref_roi_name not in self.ivm.rois:
                 raise QpException("Reference ROI not found: %s" % calib_name)
             else:
-                ref_roi_img = fsl.Image(ref_roi_name, data=self.ivm.rois[ref_roi_name].resample(data.grid).raw())
-        else:
-            ref_roi_img = None
-
+                options["ref_mask"] = fsl.Image(ref_roi_name, data=self.ivm.rois[ref_roi_name].resample(data.grid).raw())
+        
         method = options.pop("method", None)
         output_name = options.pop("output-name", data.name + "_calib")
 
         logbuf = StringIO()
-        calibrated = calib(img, calib_img, method, output_name=output_name, brain_mask=roi_img, ref_mask=ref_roi_img, log=logbuf, **options)
+        calibrated = calib(img, calib_img, method, output_name=output_name, brain_mask=roi_img, log=logbuf, **options)
         self.log = logbuf.getvalue()
         self.ivm.add_data(name=calibrated.iname, data=calibrated.data(), grid=data.grid, make_current=True)
         
