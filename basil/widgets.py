@@ -57,7 +57,7 @@ def auto_repeats(data, struc):
         ntc = 1
     nrpts /= ntc
     rpts = [int(nrpts),] * len(struc["tis"])
-    missing = data.nvols - ntc*sum(rpts)
+    missing = int((nrpts - int(nrpts)) * len(rpts))
     for idx in range(missing):
         rpts[idx] += 1
     return rpts
@@ -688,7 +688,9 @@ class AslPreprocWidget(QpWidget):
         self.struc_widget.data_combo.currentIndexChanged.connect(self._data_changed)
         vbox.addWidget(self.struc_widget)
 
+        preproc_box = QtGui.QGroupBox("Preprocessing Options")
         grid = QtGui.QGridLayout()
+        preproc_box.setLayout(grid)
 
         self.sub_cb = QtGui.QCheckBox("Label-control subtraction")
         self.sub_cb.stateChanged.connect(self._guess_output_name)
@@ -702,12 +704,14 @@ class AslPreprocWidget(QpWidget):
         self.reorder_cb.stateChanged.connect(self._guess_output_name)
         grid.addWidget(self.new_order, 5, 1)
         
-        self.mean_cb = QtGui.QCheckBox("Mean across repeats")
+        self.mean_cb = QtGui.QCheckBox("Average data")
         grid.addWidget(self.mean_cb, 6, 0)
+        self.mean_combo = QtGui.QComboBox()
+        self.mean_combo.addItem("Mean across repeats")
+        self.mean_combo.addItem("Perfusion-weighted image")
+        grid.addWidget(self.mean_combo, 6, 1)
+        self.reorder_cb.stateChanged.connect(self.mean_combo.setEnabled)
         self.mean_cb.stateChanged.connect(self._guess_output_name)
-
-        #self.smooth_cb = QtGui.QCheckBox("Smoothing")
-        #grid.addWidget(self.smooth_cb, 6, 0)
         
         grid.addWidget(QtGui.QLabel("Output name"), 7, 0)
         self.output_name = QtGui.QLineEdit()
@@ -719,7 +723,7 @@ class AslPreprocWidget(QpWidget):
         grid.addWidget(self.run_btn, 8, 0)
 
         grid.setColumnStretch(2, 1)
-        vbox.addLayout(grid)
+        vbox.addWidget(preproc_box)
         vbox.addStretch(1)
         self.output_name_edited = False
 
@@ -757,18 +761,15 @@ class AslPreprocWidget(QpWidget):
     def get_options(self):
         options = self.struc_widget.get_options()
         options["diff"] = self.sub_cb.isChecked()
-        options["mean"] = self.mean_cb.isChecked()
+        options["mean"] = self.mean_cb.isChecked() and self.mean_combo.currentIndex() == 0
+        options["pwi"] = self.mean_cb.isChecked() and self.mean_combo.currentIndex() == 1
         options["output-name"] = self.output_name.text()
         if self.reorder_cb.isChecked(): 
             options["reorder"] = self.new_order.text()
-        #if self.smooth_cb.isChecked(): 
-        #    # FIXME sigma
-        #    options["smooth"] = True
         return options
 
     def run(self):
         self.process.run(self.get_options())
-        self.struc_widget.set_data_name(self.output_name.text())
          
 FAB_CITE_TITLE = "Variational Bayesian inference for a non-linear forward model"
 FAB_CITE_AUTHOR = "Chappell MA, Groves AR, Whitcher B, Woolrich MW."
