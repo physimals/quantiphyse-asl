@@ -85,17 +85,21 @@ class AslPreprocProcess(AslProcess):
 
         if options.pop("mean", False):
             self.asldata = self.asldata.mean_across_repeats()
+        elif options.pop("pwi", False):
+            self.asldata = self.asldata.perf_weighted()
 
         output_name = options.pop("output-name", self.asldata.iname + "_preproc")
         self.ivm.add_data(self.asldata.data(), name=output_name, grid=self.grid, make_current=True)
-        new_struc = dict(self.struc)
-        for opt in ["rpts", "tis", "taus", "order", "casl", "plds"]:
-            if hasattr(self.asldata, opt):
-                new_struc[opt] = getattr(self.asldata, opt)
 
-        debug("New structure is")
-        debug(str(new_struc))
-        self.ivm.data[output_name].metadata["AslData"] = new_struc
+        if isinstance(self.asldata, AslImage):
+            new_struc = dict(self.struc)
+            for opt in ["rpts", "tis", "taus", "order", "casl", "plds"]:
+                if hasattr(self.asldata, opt):
+                    new_struc[opt] = getattr(self.asldata, opt)
+
+            debug("New structure is")
+            debug(str(new_struc))
+            self.ivm.data[output_name].metadata["AslData"] = new_struc
 
 class BasilProcess(AslProcess):
     """
