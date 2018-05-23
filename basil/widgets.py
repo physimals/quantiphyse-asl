@@ -85,7 +85,10 @@ class AslDataPreview(QtGui.QWidget, StrucView):
             "m" : (128, 255, 128, 128),
         }
         grid.addWidget(self, ypos, 0, 1, 3)
-    
+        self.struc = None
+        self.order = None
+        self.num = None
+
     def set_struc(self, struc):
         """ Set the data order, e.g. 'prt' = TC pairs, repeats, TIs/PLDs"""
         self.struc = struc
@@ -101,6 +104,8 @@ class AslDataPreview(QtGui.QWidget, StrucView):
         self.setFixedHeight((self.fontMetrics().height() + 2)*len(self.order))
 
     def paintEvent(self, _):
+        if not self.struc:
+            return
         h, w = self.height(), self.width()
         group_height = h*self.vfactor / len(self.order)
         group_width = self.hfactor*w
