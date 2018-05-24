@@ -174,6 +174,9 @@ class BasilProcess(AslProcess):
 
     def cancel(self):
         self.fabber.cancel()
+
+    def output_data_items(self):
+        return ["perfusion", "arrival", "aCBV", "duration", "perfusion_std", "arrival_std", "aCBV_std", "duration_std"]
         
     def _next_step(self):
         if self.status != self.RUNNING:
