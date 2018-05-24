@@ -129,6 +129,13 @@ class BasilProcess(AslProcess):
             # FIXME Necesssary for dummy ROI to be in the IVM
             self.ivm.add_roi(roi)
 
+        # Take copy of options and clear out remainder, to avoid 'unconsumed options' 
+        # warnings. This does risk genuinely unrecognized options going unnoticed
+        # (although there will be warnings in the Fabber log)
+        basil_options = dict(options)
+        for key in options.keys():
+            options.pop(key)
+
         # Convert image options into fsl.Image objects, als check they exist in the IVM
         # Names and descriptions of options which are images
         images = {
@@ -136,37 +143,38 @@ class BasilProcess(AslProcess):
             "pwm" : "White matter PV map", 
             "pgm" : "Grey matter PV map",
         }
-        options["asldata"] = self.asldata
-        options["mask"] = fsl.Image(roi.name, data=roi.raw(), role="Mask")
+        basil_options["asldata"] = self.asldata
+        basil_options["mask"] = fsl.Image(roi.name, data=roi.raw(), role="Mask")
         for opt, role in images.items():
-            if opt in options:
-                data = self.ivm.data.get(options[opt], self.ivm.rois.get(options[opt], None))
+            if opt in basil_options:
+                data_name = basil_options.pop(opt)
+                data = self.ivm.data.get(data_name, self.ivm.rois.get(data_name, None))
                 if data is not None:
-                    options[opt] = fsl.Image(data.name, data=data.resample(self.grid).raw(), role=role)
+                    basil_options[opt] = fsl.Image(data.name, data=data.resample(self.grid).raw(), role=role)
                 else:
-                    raise QpException("Data not found: %s" % options[opt])
+                    raise QpException("Data not found: %s" % data_name)
 
         # Taus are relevant only for CASL labelling
         # Try to use a single value where possible
         if self.struc["casl"]:
-            options["casl"] = ""
+            basil_options["casl"] = ""
             taus = self.struc["taus"]
             if min(taus) == max(taus):
-                options["tau"] = taus[0]
+                basil_options["tau"] = taus[0]
             else:
                 for idx, tau in enumerate(taus):
-                    options["tau%i" % (idx+1)] = tau
+                    basil_options["tau%i" % (idx+1)] = tau
 
         # For CASL obtain TI by adding PLD to tau
         for idx, ti in enumerate(self.asldata.tis):
             if self.struc["casl"]:
                 ti += taus[idx]
-            options["ti%i" % (idx+1)] = ti
+            basil_options["ti%i" % (idx+1)] = ti
 
         debug("Basil options: ")
-        debug(options)
+        debug(basil_options)
         logbuf = StringIO()
-        self.steps = basil.get_steps(log=logbuf, **options)
+        self.steps = basil.get_steps(log=logbuf, **basil_options)
         self.log = logbuf.getvalue()
         self.step_num = 0
         self.status = Process.RUNNING
