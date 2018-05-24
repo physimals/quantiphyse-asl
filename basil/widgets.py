@@ -56,9 +56,9 @@ def auto_repeats(data, struc):
     else: 
         ntc = 1
     nrpts /= ntc
-    rpts = [int(nrpts),] * len(struc["tis"])
-    missing = int((nrpts - int(nrpts)) * len(rpts))
-    for idx in range(missing):
+    rpts = [max(1, int(nrpts)),] * len(struc["tis"])
+    missing = sum(rpts) * ntc
+    for idx in range(min(0, missing)):
         rpts[idx] += 1
     return rpts
 
