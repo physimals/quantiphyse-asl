@@ -715,7 +715,7 @@ class AslPreprocWidget(QpWidget):
         self.mean_combo.addItem("Mean across repeats")
         self.mean_combo.addItem("Perfusion-weighted image")
         grid.addWidget(self.mean_combo, 6, 1)
-        self.reorder_cb.stateChanged.connect(self.mean_combo.setEnabled)
+        self.mean_cb.stateChanged.connect(self.mean_combo.setEnabled)
         self.mean_cb.stateChanged.connect(self._guess_output_name)
         
         grid.addWidget(QtGui.QLabel("Output name"), 7, 0)
