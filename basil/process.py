@@ -4,16 +4,15 @@ QP-BASIL - Quantiphyse processes for ASL data
 Copyright (c) 2013-2018 University of Oxford
 """
 
-import time
 from StringIO import StringIO
 
-import yaml
-
 from quantiphyse.utils import warn, debug, get_plugins, QpException
-from quantiphyse.utils.batch import Script, BatchScriptCase
+from quantiphyse.utils.batch import Script
 from quantiphyse.processes import Process
 
-from .oxasl import AslImage, fsl, basil, calib
+from .oxasl import AslImage, basil, calib
+from .fsl.data.image import Image
+from .multiphase_template import BIASCORR_MC_YAML, BASIC_YAML, DELETE_TEMP
 
 USE_CMDLINE = False
 
@@ -26,6 +25,7 @@ class AslProcess(Process):
         super(AslProcess, self).__init__(ivm, **kwargs)
         self.struc = None
         self.asldata = None
+        self.grid = None
 
     def get_asldata(self, options):
         """ 
@@ -47,7 +47,7 @@ class AslProcess(Process):
         # Create AslImage object, this will fail if structure information is 
         # insufficient or inconsistent
         data = self.ivm.data[data.name]
-        self.asldata = AslImage(data.name, data=data.raw(),
+        self.asldata = AslImage(data.raw(), name=data.name,
                                 tis=self.struc.get("tis", None),
                                 plds=self.struc.get("plds", None), 
                                 rpts=self.struc.get("rpts", None), 
@@ -65,6 +65,7 @@ class AslDataProcess(AslProcess):
     PROCESS_NAME = "AslData"
 
     def run(self, options):
+        """ Run the process """
         self.get_asldata(options)
 
 class AslPreprocProcess(AslProcess):
@@ -74,6 +75,7 @@ class AslPreprocProcess(AslProcess):
     PROCESS_NAME = "AslPreproc"
 
     def run(self, options):
+        """ Run the process """
         self.get_asldata(options)
 
         if options.pop("diff", False):
@@ -88,8 +90,8 @@ class AslPreprocProcess(AslProcess):
         elif options.pop("pwi", False):
             self.asldata = self.asldata.perf_weighted()
 
-        output_name = options.pop("output-name", self.asldata.iname + "_preproc")
-        self.ivm.add_data(self.asldata.data(), name=output_name, grid=self.grid, make_current=True)
+        output_name = options.pop("output-name", self.asldata.name + "_preproc")
+        self.ivm.add_data(self.asldata[:], name=output_name, grid=self.grid, make_current=True)
 
         if isinstance(self.asldata, AslImage):
             new_struc = dict(self.struc)
@@ -121,9 +123,10 @@ class BasilProcess(AslProcess):
         super(BasilProcess, self).__init__(ivm, **kwargs)
 
     def run(self, options):
+        """ Run the process """
         self.get_asldata(options)
         self.asldata = self.asldata.diff().reorder("rt")
-        self.ivm.add_data(self.asldata.data(), name=self.asldata.iname, grid=self.grid)
+        self.ivm.add_data(self.asldata[:], name=self.asldata.name, grid=self.grid)
         roi = self.get_roi(options, self.grid)
         if roi.name not in self.ivm.rois:
             # FIXME Necesssary for dummy ROI to be in the IVM
@@ -144,13 +147,13 @@ class BasilProcess(AslProcess):
             "pgm" : "Grey matter PV map",
         }
         basil_options["asldata"] = self.asldata
-        basil_options["mask"] = fsl.Image(roi.name, data=roi.raw(), role="Mask")
-        for opt, role in images.items():
+        basil_options["mask"] = Image(roi.raw(), name=roi.name)
+        for opt in images:
             if opt in basil_options:
                 data_name = basil_options.pop(opt)
                 data = self.ivm.data.get(data_name, self.ivm.rois.get(data_name, None))
                 if data is not None:
-                    basil_options[opt] = fsl.Image(data.name, data=data.resample(self.grid).raw(), role=role)
+                    basil_options[opt] = Image(data.resample(self.grid).raw(), name=data.name)
                 else:
                     raise QpException("Data not found: %s" % data_name)
 
@@ -166,10 +169,10 @@ class BasilProcess(AslProcess):
                     basil_options["tau%i" % (idx+1)] = tau
 
         # For CASL obtain TI by adding PLD to tau
-        for idx, ti in enumerate(self.asldata.tis):
+        for idx, tival in enumerate(self.asldata.tis):
             if self.struc["casl"]:
-                ti += taus[idx]
-            basil_options["ti%i" % (idx+1)] = ti
+                tival += taus[idx]
+            basil_options["ti%i" % (idx+1)] = tival
 
         debug("Basil options: ")
         debug(basil_options)
@@ -181,9 +184,11 @@ class BasilProcess(AslProcess):
         self._next_step()
 
     def cancel(self):
+        """ Cancel the underlying fabber process """
         self.fabber.cancel()
 
     def output_data_items(self):
+        """ :return: list of data items output by the process """
         return ["perfusion", "arrival", "aCBV", "duration", "perfusion_std", "arrival_std", "aCBV_std", "duration_std"]
         
     def _next_step(self):
@@ -206,13 +211,13 @@ class BasilProcess(AslProcess):
             self.sig_finished.emit(self.status, self.log, self.exception)
             self.ivm.set_current_data("perfusion")
 
-    def _start_fabber(self, _, step_desc, infile, mask, options, prev_step=None):
+    def _start_fabber(self, _, step_desc, options, prev_step=None):
         self.sig_step.emit(step_desc)
 
         options = dict(options)
         options["model-group"] = "asl"
-        options["data"] = infile.iname
-        options["roi"] = mask.iname
+        options["data"] = options["data"].name
+        options["roi"] = options.pop("mask").name
         if self.step_num == len(self.steps):
             # Final step - save stuff we're interested in
             options["save-mean"] = ""
@@ -265,9 +270,10 @@ class BasilProcess(AslProcess):
             # emit sig_progress scaling by number of steps
             self.sig_progress.emit((self.step_num - 1 + complete)/len(self.steps))
 
-from .multiphase_template import BIASCORR_MC_YAML, BASIC_YAML, DELETE_TEMP
-
 class AslMultiphaseProcess(Script):
+    """
+    Process for carrying out multiphase pre-process modelling
+    """
 
     PROCESS_NAME = "AslMultiphase"
 
@@ -276,6 +282,7 @@ class AslMultiphaseProcess(Script):
         self._orig_roi = None
 
     def run(self, options):
+        """ Run the process"""
         data = self.get_data(options)
         
         if options.pop("biascorr", True):
@@ -299,6 +306,7 @@ class AslMultiphaseProcess(Script):
         Script.run(self, options)
 
     def finished(self):
+        """ Called when process finishes """
         self.ivm.set_current_roi(self._orig_roi)
         self.ivm.set_current_data("mean_mag")
 
@@ -309,26 +317,25 @@ class AslCalibProcess(Process):
     PROCESS_NAME = "AslCalib"
 
     def run(self, options):
+        """ Run the process """
         data = self.get_data(options)
-        img = fsl.Image(data.name, data=data.raw())
+        img = Image(data.raw(), name=data.name)
 
         roi = self.get_roi(options, data.grid)
-        roi_img = fsl.Image(roi.name, data=roi.raw())
+        roi_img = Image(roi.raw(), name=roi.name)
 
         calib_name = options.pop("calib-data")
         if calib_name not in self.ivm.data:
             raise QpException("Calibration data not found: %s" % calib_name)
         else:
-            calib_img = fsl.Image(calib_name, data=self.ivm.data[calib_name].resample(data.grid).raw())
-
-        calib_options = {}
+            calib_img = Image(self.ivm.data[calib_name].resample(data.grid).raw(), name=calib_name)
 
         ref_roi_name = options.pop("ref-roi", None)
         if ref_roi_name is not None:
             if ref_roi_name not in self.ivm.rois:
                 raise QpException("Reference ROI not found: %s" % calib_name)
             else:
-                options["ref_mask"] = fsl.Image(ref_roi_name, data=self.ivm.rois[ref_roi_name].resample(data.grid).raw())
+                options["ref_mask"] = Image(self.ivm.rois[ref_roi_name].resample(data.grid).raw(), name=ref_roi_name)
         
         method = options.pop("method", None)
         output_name = options.pop("output-name", data.name + "_calib")
@@ -336,5 +343,5 @@ class AslCalibProcess(Process):
         logbuf = StringIO()
         calibrated = calib(img, calib_img, method, output_name=output_name, brain_mask=roi_img, log=logbuf, **options)
         self.log = logbuf.getvalue()
-        self.ivm.add_data(name=calibrated.iname, data=calibrated.data(), grid=data.grid, make_current=True)
+        self.ivm.add_data(name=calibrated.name, data=calibrated[:], grid=data.grid, make_current=True)
         

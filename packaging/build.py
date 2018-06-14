@@ -50,6 +50,11 @@ def build_plugin(package_name, rootdir, distdir, platform):
     aslmod_src = os.path.abspath(os.path.dirname(oxasl.__file__))
     shutil.copytree(aslmod_src, aslmoddir)
 
+    fslmoddir = os.path.join(packagedir, "fsl")
+    import fsl 
+    fslmod_src = os.path.abspath(os.path.dirname(fsl.__file__))
+    shutil.copytree(fslmod_src, fslmoddir)
+
 pkgdir = os.path.abspath(os.path.dirname(__file__))
 rootdir = os.path.abspath(os.path.join(pkgdir, os.pardir))
 distdir = os.path.join(rootdir, "dist")

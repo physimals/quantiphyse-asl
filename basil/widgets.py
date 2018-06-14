@@ -623,7 +623,7 @@ class AslStrucWidget(QtGui.QWidget):
         try:
             data = self.ivm.data.get(self.data_combo.currentText(), None)
             if data is not None:
-                AslImage(data.name, data=data.raw(), 
+                AslImage(data.raw(), name=data.name,
                          rpts=self.struc.get("rpts", None), 
                          tis=self.struc.get("tis", None),
                          order=self.struc.get("order", None), 
