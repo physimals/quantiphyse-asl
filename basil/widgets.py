@@ -263,9 +263,14 @@ class LabelType(ChoiceOption, StrucView):
 
     def __init__(self, struc, grid, ypos):
         ChoiceOption.__init__(self, "Data format", grid, ypos, choices=["Label-control pairs", "Control-Label pairs", "Already subtracted", "Multiphase"])
+        self.data = None
         self.set_struc(struc)
         self.sig_changed.connect(self._changed)
     
+    def set_data(self, data):
+        self.data = data
+        self._changed()
+
     def set_struc(self, struc):
         self.struc = struc
         order = self.struc["order"]
@@ -288,6 +293,8 @@ class LabelType(ChoiceOption, StrucView):
             order = char + order
         if char == "m":
             self.struc["nphases"] = 8
+            if self.data:
+                self.struc["rpts"] = auto_repeats(self.data, self.struc)
 
         self.struc["order"] = order
         self.sig_struc_changed.emit(self)
