@@ -12,7 +12,7 @@ def update_version(name, rootdir):
     vfile.close()
 
     # Standardized version in form major.minor.patch-build
-    p = re.compile("v?(\d+\.\d+\.\d+(-\d+)?).*")
+    p = re.compile("v?(\d+\.\d+(\.\d+)?(-\d+)?).*")
     m = p.match(full_version)
     if m is not None:
         std_version = m.group(1)
