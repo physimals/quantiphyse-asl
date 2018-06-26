@@ -9,7 +9,7 @@ from __future__ import division, unicode_literals, absolute_import, print_functi
 from PySide import QtCore, QtGui
 
 from quantiphyse.gui.widgets import QpWidget, RoiCombo, OverlayCombo, Citation, TitleWidget, ChoiceOption, NumericOption, OrderList, OrderListButtons, NumberGrid, RunBox
-from quantiphyse.utils.exceptions import QpException
+from quantiphyse.utils import LogSource, QpException
 
 from .process import AslDataProcess, AslPreprocProcess, BasilProcess, AslCalibProcess, AslMultiphaseProcess
 
@@ -487,11 +487,12 @@ class AslParamsGrid(NumberGrid, StrucView):
             
         self.sig_struc_changed.emit(self)
 
-class AslStrucWidget(QtGui.QWidget):
+class AslStrucWidget(QtGui.QWidget, LogSource):
     """
     QWidget which allows an ASL structure to be described
     """
     def __init__(self, ivm, parent=None, **kwargs):
+        LogSource.__init__(self)
         QtGui.QWidget.__init__(self, parent)
         self.ivm = ivm
         self.default_struc = kwargs.get("default_struc", DEFAULT_STRUC)

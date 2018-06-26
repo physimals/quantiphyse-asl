@@ -98,7 +98,7 @@ class AslPreprocProcess(AslProcess):
                     new_struc[opt] = getattr(self.asldata, opt)
 
             self.debug("New structure is")
-           self. debug(str(new_struc))
+            self.debug(str(new_struc))
             self.ivm.data[output_name].metadata["AslData"] = new_struc
 
 class BasilProcess(AslProcess):
