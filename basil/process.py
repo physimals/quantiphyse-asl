@@ -6,8 +6,10 @@ Copyright (c) 2013-2018 University of Oxford
 
 from StringIO import StringIO
 
-from quantiphyse.utils import warn, debug, get_plugins, QpException
-from quantiphyse.utils.batch import Script
+import yaml
+
+from quantiphyse.utils import get_plugins, QpException
+from quantiphyse.utils.batch import Script, BatchScriptCase
 from quantiphyse.processes import Process
 
 from .oxasl import AslImage, basil, calib
@@ -99,8 +101,8 @@ class AslPreprocProcess(AslProcess):
                 if hasattr(self.asldata, opt):
                     new_struc[opt] = getattr(self.asldata, opt)
 
-            debug("New structure is")
-            debug(str(new_struc))
+            self.debug("New structure is")
+            self.debug(str(new_struc))
             self.ivm.data[output_name].metadata["AslData"] = new_struc
 
 class BasilProcess(AslProcess):
@@ -115,7 +117,7 @@ class BasilProcess(AslProcess):
             self.fabber.sig_finished.connect(self._fabber_finished)
             self.fabber.sig_progress.connect(self._fabber_progress)
         except Exception as exc:
-            warn(str(exc))
+            self.warn(str(exc))
             raise QpException("Fabber core library not found.\n\n You must install Fabber to use this widget")
 
         self.steps = []
@@ -174,8 +176,8 @@ class BasilProcess(AslProcess):
                 tival += taus[idx]
             basil_options["ti%i" % (idx+1)] = tival
 
-        debug("Basil options: ")
-        debug(basil_options)
+        self.debug("Basil options: ")
+        self.debug(basil_options)
         logbuf = StringIO()
         self.steps = basil.get_steps(log=logbuf, **basil_options)
         self.log = logbuf.getvalue()
@@ -198,10 +200,10 @@ class BasilProcess(AslProcess):
         if self.step_num < len(self.steps):
             step = self.steps[self.step_num]
             self.step_num += 1
-            debug("Basil: starting step %i" % self.step_num)
+            self.debug("Basil: starting step %i" % self.step_num)
             self._start_fabber(*step)
         else:
-            debug("Basil: All steps complete")
+            self.debug("Basil: All steps complete")
             self.log += "COMPLETE\n"
             self.status = Process.SUCCEEDED
             self.steps = []
@@ -243,9 +245,9 @@ class BasilProcess(AslProcess):
             step_desc += " - init with STEP %i" % prev_step
             options["continue-from-mvn"] = "finalMVN"
 
-        debug("Basil: Fabber options")
+        self.debug("Basil: Fabber options")
         for k in sorted(options.keys()):
-            debug("%s=%s (%s)" % (k, str(options[k]), type(options[k])))
+           self.debug("%s=%s (%s)" % (k, str(options[k]), type(options[k])))
 
         self.log += step_desc + "\n\n"
         self.fabber.execute(options)
@@ -256,16 +258,16 @@ class BasilProcess(AslProcess):
 
         self.log += log + "\n\n"
         if status == Process.SUCCEEDED:
-            debug("Basil: completed step %i" % self.step_num)
+            self.debug("Basil: completed step %i" % self.step_num)
             self._next_step()
         else:
-            debug("Basil: Fabber failed on step %i" % self.step_num)
+            self.debug("Basil: Fabber failed on step %i" % self.step_num)
             self.log += "CANCELLED\n"
             self.status = status
             self.sig_finished.emit(self.status, self.log, exception)
             
     def _fabber_progress(self, complete):
-        debug("Basil: Fabber progress: %f", complete)
+        self.debug("Basil: Fabber progress: %f", complete)
         if self.status == self.RUNNING:
             # emit sig_progress scaling by number of steps
             self.sig_progress.emit((self.step_num - 1 + complete)/len(self.steps))
