@@ -9,14 +9,13 @@ from __future__ import division, unicode_literals, absolute_import, print_functi
 from PySide import QtCore, QtGui
 
 from quantiphyse.gui.widgets import QpWidget, RoiCombo, OverlayCombo, Citation, TitleWidget, ChoiceOption, NumericOption, OrderList, OrderListButtons, NumberGrid, RunBox
-from quantiphyse.utils import debug, warn
-from quantiphyse.utils.exceptions import QpException
+from quantiphyse.utils import LogSource, QpException
 
 from .process import AslDataProcess, AslPreprocProcess, BasilProcess, AslCalibProcess, AslMultiphaseProcess
 
 from ._version import __version__
 from .oxasl import AslImage
-from .oxasl.calib import get_tissue_defaults
+from .oxasl.calib import tissue_defaults
 
 ORDER_LABELS = {
     "r" : ("Repeat ", "R", "Repeats"), 
@@ -488,11 +487,12 @@ class AslParamsGrid(NumberGrid, StrucView):
             
         self.sig_struc_changed.emit(self)
 
-class AslStrucWidget(QtGui.QWidget):
+class AslStrucWidget(QtGui.QWidget, LogSource):
     """
     QWidget which allows an ASL structure to be described
     """
     def __init__(self, ivm, parent=None, **kwargs):
+        LogSource.__init__(self)
         QtGui.QWidget.__init__(self, parent)
         self.ivm = ivm
         self.default_struc = kwargs.get("default_struc", DEFAULT_STRUC)
@@ -575,8 +575,8 @@ class AslStrucWidget(QtGui.QWidget):
             self.updating_ui = False
 
     def _struc_changed(self, sender):
-        debug("struc changed", sender)
-        debug(self.struc)
+        self.debug("struc changed %s", sender)
+        self.debug(self.struc)
         if self.updating_ui: return
         self._update_ui(ignore=[sender])
         self._save_structure()
@@ -599,11 +599,11 @@ class AslStrucWidget(QtGui.QWidget):
         if data_name in self.ivm.data:
             self.struc = self.ivm.data[data_name].metadata.get("AslData", None)
             if self.struc is not None:
-                debug("Existing structure for", data_name)
-                debug(self.struc)
+                self.debug("Existing structure for %s", data_name)
+                self.debug(self.struc)
             else:
                 # Use defaults below
-                debug("Using default structure")
+                self.debug("Using default structure")
                 self.struc = dict(self.default_struc)
                 self._save_structure()
             self._update_ui()
@@ -614,7 +614,7 @@ class AslStrucWidget(QtGui.QWidget):
         """
         if self._validate():
             self.process.run(self.get_options())
-            debug("Saved: ", self.struc)
+            self.debug("Saved: %s ", self.struc)
 
     def _validate(self):
         """
@@ -875,7 +875,7 @@ class AslBasilWidget(QpWidget):
         self._infer(options, "tau", not self.fixtau_cb.isChecked())
        
         for item in options.items():
-            debug("%s: %s" % item)
+            self.debug("%s: %s" % item)
         
         return options
 
@@ -960,7 +960,7 @@ class AslCalibWidget(QpWidget):
     def _ref_tiss_changed(self):
         ref_type = self.ref_type.combo.currentText()
         if ref_type != "Custom":
-            t1, t2, t2star, pc = get_tissue_defaults(ref_type)
+            t1, t2, t2star, pc = tissue_defaults(ref_type)
             self.ref_t1.spin.setValue(t1)
             self.ref_t2.spin.setValue(t2)
             self.ref_pc.spin.setValue(pc)   
@@ -1115,6 +1115,6 @@ class AslMultiphaseWidget(QpWidget):
             options["keep-temp"] = self.verbose_cb.isChecked()
             
         for item in options.items():
-            debug("%s: %s" % item)
+            self.debug("%s: %s" % item)
         
         return options
