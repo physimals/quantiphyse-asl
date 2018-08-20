@@ -1,17 +1,82 @@
 """
 QP-BASIL - Quantiphyse processes for ASL data
 
+These processes use the ``oxasl`` and `fslpyt` python libraries which involves
+the following key mappings between Quantiphyse concepts and 
+oxasl concepts.
+
+ - ``quantiphyse.data.QpData`` <-> ``fsl.data.image.Image``
+
+Quantiphyse data objects can be transformed to and from ``fslpy`` Image objects.
+
+ - Quantiphyse process options -> oxasl.Workspace
+
+Process options are used to set standard attributes on the ``oxasl.Workspace`` object.
+In addition, Quantiphyse options which represent data names are transformed into 
+``fsl.data.image.Image`` objects.
+
+ - ``oxasl.AslImage`` <-> ``quantiphyse.data.QpData`` plus ``AslData`` metadata
+
+Additional information stored in the ``oxasl.AslImage`` structure is handled
+in quantiphyse using the metadata extensions.
+
 Copyright (c) 2013-2018 University of Oxford
 """
 
 from StringIO import StringIO
 
+from quantiphyse.data import DataGrid, NumpyData
 from quantiphyse.utils import get_plugins, QpException
 from quantiphyse.utils.batch import Script
 from quantiphyse.processes import Process
 
 from .multiphase_template import BIASCORR_MC_YAML, BASIC_YAML, DELETE_TEMP
-USE_CMDLINE = False
+
+def qpdata_to_fslimage(qpd):
+    """ Convert QpData to fsl.data.image.Image"""
+    from oxasl.data.image import Image
+    return Image(qpd.raw(), name=qpd.name, xform=qpd.grid.affine)
+
+def fslimage_to_qpdata(img, name=None):
+    """ Convert fsl.data.image.Image to QpData """
+    if not name: name = img.name
+    return NumpyData(img.data, grid=DataGrid(img.shape[:3], img.voxToWorldMat), name=name)
+
+def qpdata_to_aslimage(qpd, options):
+    """ Convert QpData to oxasl.AslImage using stored metadata where available """
+
+    # Get already defined structure if there is one. Override it with
+    # specified structure options
+    struc = qpd.metadata.get("AslData", {})
+        
+    for opt in ["order", "rpts", "taus", "casl", "tis", "plds", "nphases"]:
+        val = options.pop(opt, None)
+        if val is not None:
+            struc[opt] = val
+        else:
+            struc.pop(opt, None)
+
+    # Create AslImage object, this will fail if structure information is 
+    # insufficient or inconsistent
+    from oxasl import AslImage
+    asldata = AslImage(qpd.raw(), name=qpd.name,
+                       tis=struc.get("tis", None),
+                       plds=struc.get("plds", None), 
+                       rpts=struc.get("rpts", None), 
+                       order=struc.get("order", None),
+                       nphases=struc.get("nphases", None))
+                    
+    # On success, set structure metadata so other widgets/processes can use it
+    qpd.metadata["AslData"] = struc
+    return asldata
+
+def aslimage_to_qpdata(qpd):
+    """ Convert oxasl.AslImage to QpData storing additional information as metadata """
+    pass
+
+def workspace_from_options(options):
+    """ Create an oxasl.Workspace object from process options """
+    pass
 
 class AslProcess(Process):
     """ 
@@ -23,8 +88,6 @@ class AslProcess(Process):
         self.struc = None
         self.asldata = None
         self.grid = None
-        from oxasl import AslImage, basil, calib
-        from fsl.data.image import Image
 
     def get_asldata(self, options):
         """ 
@@ -32,30 +95,9 @@ class AslProcess(Process):
         """
         data = self.get_data(options)
 
-        # Get already defined structure if there is one. Override it with
-        # specified structure options
-        self.struc = data.metadata.get("AslData", {})
-            
-        for opt in ["order", "rpts", "taus", "casl", "tis", "plds", "nphases"]:
-            val = options.pop(opt, None)
-            if val is not None:
-                self.struc[opt] = val
-            else:
-                self.struc.pop(opt, None)
-
-        # Create AslImage object, this will fail if structure information is 
-        # insufficient or inconsistent
-        data = self.ivm.data[data.name]
-        self.asldata = AslImage(data.raw(), name=data.name,
-                                tis=self.struc.get("tis", None),
-                                plds=self.struc.get("plds", None), 
-                                rpts=self.struc.get("rpts", None), 
-                                order=self.struc.get("order", None),
-                                nphases=self.struc.get("nphases", None))
+        self.asldata = qpdata_to_aslimage(data, options)
+        self.struc = data.metadata["AslData"]
         self.grid = data.grid
-                       
-        # On success, set structure metadata so other widgets/processes can use it
-        data.metadata["AslData"] = self.struc
 
 class AslDataProcess(AslProcess):
     """
@@ -75,6 +117,9 @@ class AslPreprocProcess(AslProcess):
 
     def run(self, options):
         """ Run the process """
+        from oxasl import AslImage, basil, calib
+        from fsl.data.image import Image
+
         self.get_asldata(options)
 
         if options.pop("diff", False):
@@ -123,12 +168,16 @@ class BasilProcess(AslProcess):
 
     def run(self, options):
         """ Run the process """
+        from oxasl import Workspace, AslImage, basil, calib
+        from fsl.data.image import Image
+ 
         self.get_asldata(options)
         self.asldata = self.asldata.diff().reorder("rt")
+
+        # FIXME Necesssary for pre-processed data and dummy ROI to be in the IVM
         self.ivm.add_data(self.asldata[:], name=self.asldata.name, grid=self.grid)
         roi = self.get_roi(options, self.grid)
         if roi.name not in self.ivm.rois:
-            # FIXME Necesssary for dummy ROI to be in the IVM
             self.ivm.add_roi(roi)
 
         # Take copy of options and clear out remainder, to avoid 'unconsumed options' 
@@ -138,14 +187,14 @@ class BasilProcess(AslProcess):
         for key in options.keys():
             options.pop(key)
 
-        # Convert image options into fsl.Image objects, als check they exist in the IVM
+        # Convert image options into fsl.Image objects, also check they exist in the IVM
         # Names and descriptions of options which are images
         images = {
             "t1im": "T1 map", 
-            "pwm" : "White matter PV map", 
+            "pwm" : "White matter PV map",
             "pgm" : "Grey matter PV map",
         }
-        basil_options["asldata"] = self.asldata
+        
         basil_options["mask"] = Image(roi.raw(), name=roi.name)
         for opt in images:
             if opt in basil_options:
@@ -176,7 +225,9 @@ class BasilProcess(AslProcess):
         self.debug("Basil options: ")
         self.debug(basil_options)
         logbuf = StringIO()
-        self.steps = basil.get_steps(log=logbuf, **basil_options)
+        wsp = Workspace(log=logbuf, **basil_options)
+        self.steps = basil.basil_steps(wsp, self.asldata)
+
         self.log = logbuf.getvalue()
         self.step_num = 0
         self.status = Process.RUNNING
@@ -198,7 +249,7 @@ class BasilProcess(AslProcess):
             step = self.steps[self.step_num]
             self.step_num += 1
             self.debug("Basil: starting step %i" % self.step_num)
-            self._start_fabber(*step)
+            self._start_fabber(step)
         else:
             self.debug("Basil: All steps complete")
             self.log += "COMPLETE\n"
@@ -210,10 +261,10 @@ class BasilProcess(AslProcess):
             self.sig_finished.emit(self.status, self.log, self.exception)
             self.ivm.set_current_data("perfusion")
 
-    def _start_fabber(self, _, step_desc, options, prev_step=None):
-        self.sig_step.emit(step_desc)
+    def _start_fabber(self, step):
+        self.sig_step.emit(step.desc)
 
-        options = dict(options)
+        options = dict(step.options)
         options["model-group"] = "asl"
         options["data"] = options["data"].name
         options["roi"] = options.pop("mask").name
@@ -238,15 +289,14 @@ class BasilProcess(AslProcess):
             "std_tau" : "duration_std",
         }
 
-        if prev_step is not None:
-            step_desc += " - init with STEP %i" % prev_step
+        if self.step_num > 1:
             options["continue-from-mvn"] = "finalMVN"
 
         self.debug("Basil: Fabber options")
         for k in sorted(options.keys()):
-           self.debug("%s=%s (%s)" % (k, str(options[k]), type(options[k])))
+            self.debug("%s=%s (%s)" % (k, str(options[k]), type(options[k])))
 
-        self.log += step_desc + "\n\n"
+        self.log += step.desc + "\n\n"
         self.fabber.execute(options)
 
     def _fabber_finished(self, status, log, exception):
@@ -317,11 +367,14 @@ class AslCalibProcess(Process):
 
     def run(self, options):
         """ Run the process """
+        from oxasl import Workspace, calib
+        from fsl.data.image import Image
+
         data = self.get_data(options)
         img = Image(data.raw(), name=data.name)
 
         roi = self.get_roi(options, data.grid)
-        roi_img = Image(roi.raw(), name=roi.name)
+        options["mask"] = Image(roi.raw(), name=roi.name)
 
         calib_name = options.pop("calib-data")
         if calib_name not in self.ivm.data:
@@ -336,11 +389,14 @@ class AslCalibProcess(Process):
             else:
                 options["ref_mask"] = Image(self.ivm.rois[ref_roi_name].resample(data.grid).raw(), name=ref_roi_name)
         
-        method = options.pop("method", None)
+        options["calib_method"] = options.pop("method", None)
         output_name = options.pop("output-name", data.name + "_calib")
 
         logbuf = StringIO()
-        calibrated = calib(img, calib_img, method, output_name=output_name, brain_mask=roi_img, log=logbuf, **options)
+        wsp = Workspace(log=logbuf, **options)
+        wsp.calib = calib_img
+        ## FIXME variance mode
+        calibrated = calib.calibrate(wsp, img)
         self.log = logbuf.getvalue()
-        self.ivm.add_data(name=calibrated.name, data=calibrated[:], grid=data.grid, make_current=True)
+        self.ivm.add_data(name=output_name, data=calibrated.data, grid=data.grid, make_current=True)
         

@@ -622,7 +622,7 @@ class AslStrucWidget(QtGui.QWidget, LogSource):
             from oxasl import AslImage
             data = self.ivm.data.get(self.data_combo.currentText(), None)
             if data is not None:
-                AslImage(data.raw(), name=data.name,
+                AslImage(data.raw(),
                          rpts=self.struc.get("rpts", None), 
                          tis=self.struc.get("tis", None),
                          order=self.struc.get("order", None), 
