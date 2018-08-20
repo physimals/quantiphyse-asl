@@ -14,8 +14,6 @@ from quantiphyse.utils import LogSource, QpException
 from .process import AslDataProcess, AslPreprocProcess, BasilProcess, AslCalibProcess, AslMultiphaseProcess
 
 from ._version import __version__
-from .oxasl import AslImage
-from .oxasl.calib import tissue_defaults
 
 ORDER_LABELS = {
     "r" : ("Repeat ", "R", "Repeats"), 
@@ -621,6 +619,7 @@ class AslStrucWidget(QtGui.QWidget, LogSource):
         Validate data against specified TIs, etc
         """
         try:
+            from oxasl import AslImage
             data = self.ivm.data.get(self.data_combo.currentText(), None)
             if data is not None:
                 AslImage(data.raw(), name=data.name,
@@ -960,6 +959,7 @@ class AslCalibWidget(QpWidget):
     def _ref_tiss_changed(self):
         ref_type = self.ref_type.combo.currentText()
         if ref_type != "Custom":
+            from oxasl.calib import tissue_defaults
             t1, t2, t2star, pc = tissue_defaults(ref_type)
             self.ref_t1.spin.setValue(t1)
             self.ref_t2.spin.setValue(t2)

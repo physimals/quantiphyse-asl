@@ -10,10 +10,7 @@ from quantiphyse.utils import get_plugins, QpException
 from quantiphyse.utils.batch import Script
 from quantiphyse.processes import Process
 
-from .oxasl import AslImage, basil, calib
-from .fsl.data.image import Image
 from .multiphase_template import BIASCORR_MC_YAML, BASIC_YAML, DELETE_TEMP
-
 USE_CMDLINE = False
 
 class AslProcess(Process):
@@ -26,6 +23,8 @@ class AslProcess(Process):
         self.struc = None
         self.asldata = None
         self.grid = None
+        from oxasl import AslImage, basil, calib
+        from fsl.data.image import Image
 
     def get_asldata(self, options):
         """ 

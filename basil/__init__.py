@@ -13,6 +13,7 @@ from .tests import AslPreprocWidgetTest, MultiphaseProcessTest, BasilProcessTest
 QP_MANIFEST = {
     "widgets" : [AslPreprocWidget, AslBasilWidget, AslCalibWidget, AslMultiphaseWidget],
     "fabber-libs" : [get_local_shlib("fabber_models_asl", __file__)],
+    "module-dirs" : ["deps",],
     "asl-widgets" : [AslStrucCheck, AslStrucWidget],
     "processes" : [BasilProcess, AslMultiphaseProcess],
     "widget-tests" : [AslPreprocWidgetTest],
