@@ -4,23 +4,28 @@ QP-BASIL - Quantiphyse widgets for processing for ASL data
 Copyright (c) 2013-2018 University of Oxford
 """
 
-from __future__ import division, unicode_literals, absolute_import, print_function
+from __future__ import division, unicode_literals, absolute_import
 
 from PySide import QtCore, QtGui
 
 from quantiphyse.gui.widgets import QpWidget, RoiCombo, OverlayCombo, Citation, TitleWidget, ChoiceOption, NumericOption, OrderList, OrderListButtons, NumberGrid, RunBox
+from quantiphyse.gui.options import OptionBox, ChoiceOption as Choice, NumericOption as Number, BoolOption, DataOption, FileOption
 from quantiphyse.utils import LogSource, QpException
 
-from .process import AslDataProcess, AslPreprocProcess, BasilProcess, AslCalibProcess, AslMultiphaseProcess
+from .process import AslPreprocProcess, BasilProcess, AslCalibProcess, AslMultiphaseProcess, OxaslProcess, qpdata_to_aslimage
 
 from ._version import __version__
 
 ORDER_LABELS = {
     "r" : ("Repeat ", "R", "Repeats"), 
     "t" : ("TI ", "TI", "TIs/PLDs"),
-    "p" : (("Label", "Control"), ("L", "C"), "Label-Control pairs"),
-    "P" : (("Control", "Label"), ("C", "L"), "Control-Label pairs"),
-    "m" : ("Phase ", "Ph", "Phases"),
+    "l" : {
+        "tc" : (("Label", "Control"), ("L", "C"), "Label-Control pairs"),
+        "ct" : (("Control", "Label"), ("C", "L"), "Control-Label pairs"),
+        "mp" : ("Phase ", "Ph", "Phases"),
+        "ve" : ("Encoding", "Enc", "Encoding cycles"),
+        "diff" : ("", "", ""),
+    }
 }
 
 TIMING_LABELS = {
@@ -28,81 +33,107 @@ TIMING_LABELS = {
     False : "TIs",
 }
 
-DEFAULT_STRUC = {
-    "order" : "prt", 
+DEFAULT_METADATA = {
+    "iaf" : "tc",
+    "order" : "lrt", 
     "tis" : [1.5,], 
     "taus" : [1.4,], 
     "casl" : True
 }
 
-def auto_repeats(data, struc):
-    if data is None: 
-        return [1,]
-    
-    nvols = data.nvols
-    nrpts = float(nvols) / len(struc["tis"])
-    if "p" in struc["order"].lower():
-        ntc = 2
-    elif "m" in struc["order"].lower():
-        if "phases" in struc:
-            ntc = len(struc["phases"])
-        elif "nphases" in struc:
-            ntc = struc["nphases"]
-        else:
-            ntc = 1
-    else: 
-        ntc = 1
-    nrpts /= ntc
-    rpts = [max(1, int(nrpts)),] * len(struc["tis"])
-    missing = sum(rpts) * ntc
-    for idx in range(min(0, missing)):
-        rpts[idx] += 1
-    return rpts
+class AslMetadataView(object):
+    """
+    Objects which displays and potentially changes ASL metadata
+    """
 
-class StrucView(object):
-    sig_struc_changed = QtCore.Signal(object)
+    # Signal emitted when this view changes the metadata
+    sig_md_changed = QtCore.Signal(object)
 
     def set_data(self, data):
+        """
+        Sets the data whose ASL metadata is to be displayed
+        
+        Sets the attributes ``data``, ``md`` and calls ``update()``
+
+        :param data: QpData object 
+        """
+        self.data = data
+        if self.data is not None:
+            self.md = dict(data.metadata.get("AslData", {}))
+            # Make sure we always have some basic defaults
+            if "tis" not in self.md and "plds" not in self.md: self.md["tis"] = [1.5]
+            if "taus" not in self.md: self.md["taus"] = [1.4]
+            if "iaf" not in self.md: self.md["iaf"] = "diff"
+            if "order" not in self.md:
+                if self.md["iaf"] == "diff": 
+                    self.md["order"] = "rt"
+                else:
+                    self.md["order"] = "lrt"
+        else:
+            self.md = {}
+
+        self.update()
+
+    def update(self):
+        """
+        Override to update the view when the data object changes
+        """
         pass
 
-class AslDataPreview(QtGui.QWidget, StrucView):
+    def get_num_label_vols(self):
+        iaf = self.md.get("iaf", "tc")
+        if iaf in ("tc", "ct"):
+            return 2
+        elif iaf == "diff":
+            return 1
+        elif iaf == "mp":
+            return self.md.get("nphases", 8)
+        elif iaf == "ve":
+            return self.md.get("nenc", 8)
+
+    def get_auto_repeats(self):
+        if self.data is None: 
+            return [1,]
+        
+        nvols = self.data.nvols
+        ntis = len(self.md.get("tis", [1.5]))
+        nrpts = float(nvols) / ntis
+        ntc = self.get_num_label_vols()
+        
+        nrpts /= ntc
+        rpts = [max(1, int(nrpts)),] * ntis
+        missing = sum(rpts) * ntc
+        for idx in range(min(0, missing)):
+            rpts[idx] += 1
+        return rpts
+
+class AslDataPreview(QtGui.QWidget, AslMetadataView):
     """
     Visual preview of the structure of an ASL data set
     """
-    def __init__(self, struc, grid, ypos):
+    def __init__(self, data, grid, ypos):
         QtGui.QWidget.__init__(self)
-        self.set_struc(struc)
+        self.set_data(data)
         self.hfactor = 0.95
         self.vfactor = 0.95
         self.cols = {
             "r" : (128, 128, 255, 128), 
             "t" : (255, 128, 128, 128), 
-            "P" : (128, 255, 128, 128),
-            "p" : (128, 255, 128, 128),
-            "m" : (128, 255, 128, 128),
+            "l" : (128, 255, 128, 128),
         }
         grid.addWidget(self, ypos, 0, 1, 3)
-        self.struc = None
-        self.order = None
-        self.num = None
 
-    def set_struc(self, struc):
-        """ Set the data order, e.g. 'prt' = TC pairs, repeats, TIs/PLDs"""
-        self.struc = struc
-        self.order = struc.get("order", "prt")
+    def update(self):
+        self.order = self.md.get("order", "lrt")
         self.num = {
-            "t" : len(struc.get("tis", [1.0] * 3)), 
-            "r" : struc.get("rpts", [struc.get("nrpts", 3)])[0],
-            "m" : len(struc.get("phases", [1] * struc.get("nphases", 8))),
-            "p" : 2,
-            "P" : 2,
+            "t" : len(self.md.get("tis", [1.4,])),
+            "r" : self.md.get("rpts", [self.md.get("nrpts", 3),])[0], # FIXME variable repeats won't work
+            "l" : self.get_num_label_vols()
         }
         self.repaint()
         self.setFixedHeight((self.fontMetrics().height() + 2)*len(self.order))
 
     def paintEvent(self, _):
-        if not self.struc:
-            return
         h, w = self.height(), self.width()
         group_height = h*self.vfactor / len(self.order)
         group_width = self.hfactor*w
@@ -113,6 +144,8 @@ class AslDataPreview(QtGui.QWidget, StrucView):
 
     def _get_label(self, code, num, short):
         labels = ORDER_LABELS[code]
+        if isinstance(labels, dict):
+            labels = labels[self.md.get("iaf", "tc")]
         label = labels[int(short)]
         if isinstance(label, tuple):
             return label[num]
@@ -153,84 +186,31 @@ class AslDataPreview(QtGui.QWidget, StrucView):
                     p.drawText(ox, oy, 2*w-1, height, QtCore.Qt.AlignHCenter, label)
                     self._draw_groups(p, groups[1:], ox, oy+height, 2*w, height)
 
-class AslStrucCheck(QtGui.QWidget):
-    """
-    Widget which checks that structure information is available for an ASL data set
-    """
-
-    def __init__(self, ivm):
-        QtGui.QWidget.__init__(self)
-        self.ivm = ivm
-        self.struc = None
-        hbox = QtGui.QHBoxLayout()
-        hbox.setSpacing(0)
-        self.setLayout(hbox)
-
-        self.ok_icon = QtGui.QIcon.fromTheme("dialog-information")
-        self.warn_icon = QtGui.QIcon.fromTheme("dialog-error")
-        self.icon = QtGui.QLabel()
-        hbox.addWidget(self.icon)
-
-        self.text = QtGui.QLabel()
-        self.text.setWordWrap(True)
-        hbox.addWidget(self.text)
-        hbox.setStretchFactor(self.text, 2)
-
-        self.set_data_name(None)
-        
-    def _order_readable(self, order):
-        return ", ".join([ORDER_LABELS[c][2] for c in order])
-
-    def set_data_name(self, data_name):
-        """ Set the name of the data item whose structure is being checked """
-        if data_name not in self.ivm.data:
-            self.setVisible(False)
-        else:
-            self.setVisible(True)
-            self.struc = self.ivm.data[data_name].metadata.get("AslData", None)
-            if self.struc is None:
-                self.text.setText("You need to define the structure of your ASL data first\nSee the 'ASL Structure' widget")
-                self.icon.setPixmap(self.warn_icon.pixmap(32, 32))
-                self.setStyleSheet(
-                    """QWidget { background-color: orange; color: black; padding: 5px 5px 5px 5px;}""")
-            else:
-                casl = self.struc.get("casl", True)
-                text = "Asl structure found - "
-                text += "Order: %s\n" % self._order_readable(self.struc.get("order", ""))
-                if casl:
-                    text += "Labelling: CASL/pCASL\n"
-                else:
-                    text += "Labelling: PASL\n"
-                text += "%s: %s\n" % (TIMING_LABELS[casl], self.struc.get("tis", []))
-                if "rpts" in self.struc:
-                    text += "Repeats: %s\n" % self.struc["rpts"]
-
-                self.text.setText(text)
-                self.icon.setPixmap(self.ok_icon.pixmap(32, 32))
-                self.setStyleSheet(
-                    """QWidget { background-color: green; color: black; padding: 5px 5px 5px 5px;}""")
-
-class NumPhases(NumericOption, StrucView):
-    def __init__(self, struc, grid, ypos):
+class NumPhases(NumericOption, AslMetadataView):
+    def __init__(self, data, grid, ypos):
         NumericOption.__init__(self, "Number of Phases (evenly spaced)", grid, ypos, default=8, intonly=True, minval=2)
-        self.set_struc(struc)
+        self.set_data(data)
         self.sig_changed.connect(self._changed)
     
-    def set_struc(self, struc):
-        self.struc = struc
-        order = self.struc["order"]
+    def update(self):
         # Phase list only visible in multiphase mode
-        self.label.setVisible("m" in order)
-        self.spin.setVisible("m" in order)
-        if "m" in order:
-            self.spin.setValue(self.struc.get("nphases", 8))
-                    
-    def _changed(self):
-        self.struc["nphases"] = self.spin.value()
-        self.sig_struc_changed.emit(self)
+        multiphase = self.md.get("iaf", "") == "mp"
+        self.label.setVisible(multiphase)
+        self.spin.setVisible(multiphase)
+        if multiphase:
+            self.spin.setValue(self.md.get("nphases", 8))
+            if "nphases" not in self.md:
+                self._changed()
 
-class DataOrdering(QtCore.QObject, StrucView):
-    def __init__(self, struc, grid, ypos):
+    def _changed(self):
+        if self.spin.isVisible():
+            self.md["nphases"] = self.spin.value()
+        else:
+            self.md.pop("nphases", None)
+        self.sig_md_changed.emit(self)
+
+class DataOrdering(QtCore.QObject, AslMetadataView):
+    def __init__(self, data, grid, ypos):
         QtCore.QObject.__init__(self)
         grid.addWidget(QtGui.QLabel("Data grouping\n(top = outermost)"), ypos, 0, alignment=QtCore.Qt.AlignTop)
         self.group_list = OrderList()
@@ -239,116 +219,105 @@ class DataOrdering(QtCore.QObject, StrucView):
         grid.addLayout(self.list_btns, ypos, 2)
 
         # Have to set items after adding to grid or sizing doesn't work right
-        self.set_struc(struc)
+        self.set_data(data)
         self.group_list.sig_changed.connect(self._changed)
     
-    def set_struc(self, struc):
-        self.struc = struc
-        order = self.struc["order"]
-        self.group_list.setItems([ORDER_LABELS[g][2] for g in order[::-1]])
+    def _get_label(self, order_char):
+        labels = ORDER_LABELS[order_char]
+        if isinstance(labels, dict):
+            labels = labels[self.md.get("iaf", "tc")]
+        return labels[2]
+
+    def update(self):
+        order = self.md.get("order", "lrt")
+        self.group_list.setItems([self._get_label(g) for g in order[::-1]])
                      
     def _changed(self):
         order = ""
         for item in self.group_list.items():
-            code = [k for k, v in ORDER_LABELS.items() if v[2] == item][0]
+            code = [char for char in ('t', 'r', 'l') if self._get_label(char) == item][0]
             order += code
 
-        self.struc["order"] = order[::-1]
-        self.sig_struc_changed.emit(self)
+        self.md["order"] = order[::-1]
+        self.sig_md_changed.emit(self)
 
-class LabelType(ChoiceOption, StrucView):
+class LabelType(ChoiceOption, AslMetadataView):
 
-    def __init__(self, struc, grid, ypos):
+    def __init__(self, data, grid, ypos):
         ChoiceOption.__init__(self, "Data format", grid, ypos, choices=["Label-control pairs", "Control-Label pairs", "Already subtracted", "Multiphase"])
-        self.set_struc(struc)
+        self._indexes = ["tc", "ct", "diff", "mp"]
+        self.set_data(data)
         self.sig_changed.connect(self._changed)
     
-    def set_struc(self, struc):
-        self.struc = struc
-        order = self.struc["order"]
-        if "p" in order:
-            self.combo.setCurrentIndex(0)
-        elif "P" in order:
-            self.combo.setCurrentIndex(1)
-        elif "m" in order:
-            self.combo.setCurrentIndex(3)
-        else:
-            self.combo.setCurrentIndex(2)
-                      
+    def update(self):
+        iaf = self.md.get("iaf", "tc")
+        self.combo.setCurrentIndex(self._indexes.index(iaf))
+        
     def _changed(self):
-        order = self.struc["order"]
-        idx = self.combo.currentIndex()
+        iaf = self._indexes[self.combo.currentIndex()]
+        self.md["iaf"] = iaf
+        if iaf == "diff":
+            self.md["order"] = self.md["order"].replace("l", "")
+        elif "l" not in self.md["order"]:
+            self.md["order"] = "l" + self.md["order"]
+        self.sig_md_changed.emit(self)
 
-        char = ["p", "P", "", "m"][idx]
-        order = order.replace("p", char).replace("P", char).replace("m", char)
-        if char != "" and char not in order:
-            order = char + order
-        if char == "m":
-            self.struc["nphases"] = 8
+class Labelling(ChoiceOption, AslMetadataView):
 
-        self.struc["order"] = order
-        self.sig_struc_changed.emit(self)
-
-class Labelling(ChoiceOption, StrucView):
-
-    def __init__(self, struc, grid, ypos):
+    def __init__(self, data, grid, ypos):
         ChoiceOption.__init__(self, "Labelling", grid, ypos, choices=["cASL/pcASL", "pASL"])
-        self.set_struc(struc)
+        self.set_data(data)
         self.combo.currentIndexChanged.connect(self._changed)
     
-    def set_struc(self, struc):
-        self.struc = struc
-        self.combo.setCurrentIndex(1-int(self.struc.get("casl", True)))
+    def update(self):
+        self.combo.setCurrentIndex(1-int(self.md.get("casl", True)))
                       
     def _changed(self):
-        self.struc["casl"] = self.combo.currentIndex() == 0
-        self.sig_struc_changed.emit(self)
+        self.md["casl"] = self.combo.currentIndex() == 0
+        self.sig_md_changed.emit(self)
 
-class Readout(ChoiceOption, StrucView):
+class Readout(ChoiceOption, AslMetadataView):
 
-    def __init__(self, struc, grid, ypos):
+    def __init__(self, data, grid, ypos):
         ChoiceOption.__init__(self, "Readout", grid, ypos, choices=["3D (e.g. GRASE)", "2D (e.g. EPI)"])
-        self.set_struc(struc)
+        self.set_data(data)
         self.combo.currentIndexChanged.connect(self._changed)
     
-    def set_struc(self, struc):
-        self.struc = struc
-        readout_2d = "slicedt" in self.struc
+    def update(self):
+        readout_2d = "slicedt" in self.md
         self.combo.setCurrentIndex(int(readout_2d))
                       
     def _changed(self):
         if self.combo.currentIndex() == 0:
-            self.struc.pop("slicedt", None)
+            self.md.pop("slicedt", None)
         else:
-            self.struc["slicedt"] = None
-        
-        self.sig_struc_changed.emit(self)
+            self.md["slicedt"] = None
+        self.sig_md_changed.emit(self)
 
-class SliceTime(NumericOption, StrucView):
+class SliceTime(NumericOption, AslMetadataView):
 
-    def __init__(self, struc, grid, ypos):
+    def __init__(self, data, grid, ypos):
         NumericOption.__init__(self, "Time per slice (ms)", grid, ypos, default=10, decimals=2)
-        self.set_struc(struc)
+        self.set_data(data)
         self.spin.valueChanged.connect(self._changed)
     
-    def set_struc(self, struc):
-        self.struc = struc
-        readout_2d = "slicedt" in self.struc
+    def update(self):
+        readout_2d = "slicedt" in self.md
         self.label.setVisible(readout_2d)
         self.spin.setVisible(readout_2d)
         if readout_2d:
-            slicedt = self.struc["slicedt"]
+            slicedt = self.md["slicedt"]
             if slicedt is None:
                 slicedt = 0.01
             self.spin.setValue(slicedt*1000) # s->ms
             
     def _changed(self):
-        self.struc["slicedt"] = self.spin.value() / 1000 # ms->s
-        self.sig_struc_changed.emit(self)
+        self.md["slicedt"] = self.spin.value() / 1000 # ms->s
+        self.sig_md_changed.emit(self)
 
-class Multiband(QtCore.QObject, StrucView):
+class Multiband(QtCore.QObject, AslMetadataView):
 
-    def __init__(self, struc, grid, ypos):
+    def __init__(self, data, grid, ypos):
         QtCore.QObject.__init__(self)
         self.cb = QtGui.QCheckBox("Multiband")
         grid.addWidget(self.cb, ypos, 0)
@@ -361,68 +330,61 @@ class Multiband(QtCore.QObject, StrucView):
         hbox.addWidget(self.slices_per_band_lbl)
         grid.addLayout(hbox, ypos, 1)
 
-        self.set_struc(struc)
+        self.set_data(data)
         self.slices_per_band.valueChanged.connect(self._changed)
         self.cb.stateChanged.connect(self._changed)
     
-    def set_struc(self, struc):
-        self.struc = struc
-        readout_2d = "slicedt" in self.struc
-        multiband = "sliceband" in self.struc
+    def update(self):
+        readout_2d = "slicedt" in self.md
+        multiband = "sliceband" in self.md
         self.cb.setVisible(readout_2d)
         self.cb.setChecked(multiband)
         self.slices_per_band.setVisible(readout_2d)
         self.slices_per_band_lbl.setVisible(readout_2d)
         self.slices_per_band.setEnabled(multiband)
         if multiband: 
-            self.slices_per_band.setValue(self.struc["sliceband"])
+            self.slices_per_band.setValue(self.md["sliceband"])
             
     def _changed(self):
         self.slices_per_band.setEnabled(self.cb.isChecked())
         if self.cb.isChecked():
-            self.struc["sliceband"] = self.slices_per_band.value()
+            self.md["sliceband"] = self.slices_per_band.value()
         else:
-            self.struc.pop("sliceband", None)
-        self.sig_struc_changed.emit(self)
+            self.md.pop("sliceband", None)
+        self.sig_md_changed.emit(self)
 
-class RepeatsChoice(ChoiceOption, StrucView):
+class RepeatsChoice(ChoiceOption, AslMetadataView):
 
-    def __init__(self, struc, grid, ypos):
+    def __init__(self, data, grid, ypos):
         ChoiceOption.__init__(self, "Repeats", grid, ypos, choices=["Fixed", "Variable"])
 
-        self.set_struc(struc)
-        self.set_data(None)
+        self.set_data(data)
         self.sig_changed.connect(self._changed)
     
-    def set_data(self, data):
-        self.data = data
-        self._changed()
-
-    def set_struc(self, struc):
-        self.struc = struc
-        rpts = self.struc.get("rpts", None)
+    def update(self):
+        rpts = self.md.get("rpts", None)
         var_rpts = rpts is not None and min(rpts) != max(rpts)
         self.combo.setCurrentIndex(int(var_rpts))
 
     def _changed(self):
-        repeats = auto_repeats(self.data, self.struc)
+        auto_repeats = self.get_auto_repeats()
         fixed_repeats = self.combo.currentIndex() == 0
         if fixed_repeats:
-            self.struc.pop("rpts", None)
-            if min(repeats) == max(repeats):
-                self.struc["nrpts"] = repeats[0]
+            self.md.pop("rpts", None)
+            if min(auto_repeats) == max(auto_repeats):
+                self.md["nrpts"] = auto_repeats[0]
         else:
-            self.struc.pop("nrpts", None)
-            if "rpts" not in self.struc:
-                self.struc["rpts"] = repeats
-        self.sig_struc_changed.emit(self)
+            self.md.pop("nrpts", None)
+            if "rpts" not in self.md:
+                self.md["rpts"] = auto_repeats
+        self.sig_md_changed.emit(self)
         
-class AslParamsGrid(NumberGrid, StrucView):
+class AslParamsGrid(NumberGrid, AslMetadataView):
     """ 
     Grid which displays TIs, taus and optionally variable repeats 
     """
 
-    def __init__(self, struc, grid, ypos):
+    def __init__(self, data, grid, ypos):
         self.tau_header = "Bolus durations"
         self.rpt_header = "Repeats"
 
@@ -432,24 +394,18 @@ class AslParamsGrid(NumberGrid, StrucView):
                             fix_height=True)
 
         grid.addWidget(self, ypos, 0, 1, 3)
-        self.set_struc(struc)
-        self.set_data(None)
+        self.set_data(data)
         self.sig_changed.connect(self._changed)
     
-    def set_data(self, data):
-        self.data = data
-    
-    def set_struc(self, struc):
-        self.struc = struc
-
-        rpts = self.struc.get("rpts", None)
+    def update(self):
+        rpts = self.md.get("rpts", None)
         var_rpts = rpts is not None
 
-        grid_values = [self.struc["tis"], self.struc["taus"]]
+        grid_values = [self.md.get("tis", [1.5]), self.md.get("taus", [1.8])]
         if var_rpts:
             grid_values.append(rpts)
 
-        casl = self.struc.get("casl", True)
+        casl = self.md.get("casl", True)
         self._model.setVerticalHeaderLabels(self._headers(casl, var_rpts))
         self.setValues(grid_values, validate=False)
 
@@ -467,37 +423,37 @@ class AslParamsGrid(NumberGrid, StrucView):
             # Non-numeric values - don't change anything
             return
 
-        self.struc["tis"] = values[0]
-        self.struc["taus"] = values[1]
+        self.md["tis"] = values[0]
+        self.md["taus"] = values[1]
 
         try:
             if len(values) > 2:
-                self.struc["rpts"] = [int(v) for v in values[2]]
+                self.md["rpts"] = [int(v) for v in values[2]]
             else:
                 # May need to recalculate fixed repeats
-                repeats = auto_repeats(self.data, self.struc)
-                self.struc.pop("nrpts", None)
+                repeats = self.get_auto_repeats()
+                self.md.pop("nrpts", None)
                 if min(repeats) == max(repeats):
-                    self.struc["nrpts"] = repeats[0]
+                    self.md["nrpts"] = repeats[0]
         except ValueError:
             # Repeats are not integers - FIXME silently ignored
             pass
             
-        self.sig_struc_changed.emit(self)
+        self.sig_md_changed.emit(self)
 
-class AslStrucWidget(QtGui.QWidget, LogSource):
+class AslImageWidget(QtGui.QWidget, LogSource):
     """
-    QWidget which allows an ASL structure to be described
+    QWidget which allows an ASL data set to be described
+
+    This is intended to be embedded into a QpWidget which supports processing of ASL data
     """
     def __init__(self, ivm, parent=None, **kwargs):
         LogSource.__init__(self)
         QtGui.QWidget.__init__(self, parent)
         self.ivm = ivm
-        self.default_struc = kwargs.get("default_struc", DEFAULT_STRUC)
-
+        self.data = None
+        self.aslimage = None
         self.updating_ui = False
-        self.process = AslDataProcess(self.ivm)
-        self.struc = dict(self.default_struc)
         
         vbox = QtGui.QVBoxLayout()
         self.setLayout(vbox)
@@ -516,8 +472,8 @@ class AslStrucWidget(QtGui.QWidget, LogSource):
         for idx, view_class in enumerate(view_classes):
             if view_class in kwargs.get("ignore_views", ()): 
                 continue
-            view = view_class(self.struc, grid, ypos=idx+2)
-            view.sig_struc_changed.connect(self._struc_changed)
+            view = view_class(None, grid, ypos=idx+2)
+            view.sig_md_changed.connect(self._metadata_changed)
             self.views.append(view)
 
         #grid.addWidget(QtGui.QLabel("Data order preview"), 5, 0)
@@ -547,130 +503,86 @@ class AslStrucWidget(QtGui.QWidget, LogSource):
         self._data_changed()
         
     def set_data_name(self, name):
-        """ Set the name of the data item whose structure is being displayed """
+        """ Set the name of the data item being displayed """
         if name not in self.ivm.data:
             raise QpException("Data not found: %s" % name)
         else:
             idx = self.data_combo.findText(name)
             self.data_combo.setCurrentIndex(idx)
 
-    def set_struct(self, struct):
-        self.struct = struct
-        self._update_ui()
-        self._save_structure()
+    def _data_changed(self):
+        """
+        New data selected - load any previously defined metadata, and validate it 
+        """
+        self.data = self.ivm.data.get(self.data_combo.currentText(), None)
+        if self.data is not None:
+            for view in self.views:
+                view.set_data(self.data)
+            self._validate(self.data.metadata.get("AslData", {}))
+
+    def _metadata_changed(self, sender):
+        """
+        A view has changed the metadata
+
+        FIXME the process of updating the views can elicit additional
+        metadata changes
+        """
+        self.debug("Metadata changed %s", sender)
+        if self.data is not None:
+            self.debug("Current metadata: %s", self.data.metadata.get("AslData", {}))
+        self.debug("New metadata: %s", sender.md)
+        self._validate(sender.md)
+        self._save_metadata(sender.md)
 
     def _update_ui(self, ignore=()):
         """ 
-        Update user interface from the structure 
+        Update user interface from the current metadata 
         """
         # Hack to avoid processing signals while updating UI
-        self.updating_ui = True
+        #if self.updating_ui: return
+        #self.updating_ui = True
         try:
             for view in self.views:
                 if view not in ignore:
-                    view.set_struc(self.struc)
+                    view.set_data(self.data)
         finally:
             self.updating_ui = False
 
-    def _struc_changed(self, sender):
-        self.debug("struc changed %s", sender)
-        self.debug(self.struc)
-        if self.updating_ui: return
-        self._update_ui(ignore=[sender])
-        self._save_structure()
+    def _save_metadata(self, md):
+        """
+        Set the metadata on the dataset
+        """
+        if self.data is not None:
+            current_md = self.data.metadata.get("AslData", {})
+            self.debug("Save: Current metadata: %s", self.data.metadata.get("AslData", {}))
+            if md != current_md:
+                self.debug("Different!")
+                self.data.metadata["AslData"] = dict(md)
+                self.debug("Saved: %s ", md)
+                self._update_ui()
 
-    def _data_changed(self):
-        """
-        New data selected - load any previously defined structure, and validate it 
-        """
-        data = self.ivm.data.get(self.data_combo.currentText(), None)
-        if data is not None:
-            self._load_structure(data.name)
-            self._validate()
-            for view in self.views:
-                view.set_data(data)
-        
-    def _load_structure(self, data_name):
-        """ 
-        Load previously defined structure information, if any
-        """
-        if data_name in self.ivm.data:
-            self.struc = self.ivm.data[data_name].metadata.get("AslData", None)
-            if self.struc is not None:
-                self.debug("Existing structure for %s", data_name)
-                self.debug(self.struc)
-            else:
-                # Use defaults below
-                self.debug("Using default structure")
-                self.struc = dict(self.default_struc)
-                self._save_structure()
-            self._update_ui()
-
-    def _save_structure(self):
-        """
-        Set the structure on the dataset using AslDataProcess
-        """
-        if self._validate():
-            self.process.run(self.get_options())
-            self.debug("Saved: %s ", self.struc)
-
-    def _validate(self):
+    def _validate(self, md):
         """
         Validate data against specified TIs, etc
         """
         try:
-            from oxasl import AslImage
-            data = self.ivm.data.get(self.data_combo.currentText(), None)
-            if data is not None:
-                AslImage(data.raw(),
-                         rpts=self.struc.get("rpts", None), 
-                         tis=self.struc.get("tis", None),
-                         order=self.struc.get("order", None), 
-                         nphases=self.struc.get("nphases", None))
-                self.warn_label.setVisible(False)
-                return True
-            return False
+            if md and self.data is not None:
+                self.debug("Validating against metadata: %s", str(md))
+                self.aslimage, md = qpdata_to_aslimage(self.data, metadata=md)
+            self.warn_label.setVisible(False)
         except RuntimeError, e:
+            self.debug("Failed: %s", str(e))
+            self.aslimage = None
             self.warn_label.setText(str(e))
             self.warn_label.setVisible(True)
-            return False
 
     def get_options(self):
         """ Get batch options """
-        options = {
-            "data" : self.data_combo.currentText(),
-        }
-        options.update(self.struc)
+        options = {}
+        if self.data is not None:
+            options["data"] = self.data.name
+            options.update(self.data.metadata["AslData"])
         return options
-
-class AslDataWidget(QpWidget):
-    """
-    Widget which lets you define the structure of an ASL dataset
-    """
-    def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL Structure", icon="asl.png", group="ASL", desc="Define the structure of an ASL dataset", **kwargs)
-        self.process = AslDataProcess(self.ivm)
-        
-    def init_ui(self):
-        vbox = QtGui.QVBoxLayout()
-        self.setLayout(vbox)
-
-        title = TitleWidget(self, help="asl_struc", subtitle="Define the structure of an ASL dataset %s" % __version__)
-        vbox.addWidget(title)
-
-        self.struc_widget = AslStrucWidget(self.ivm, parent=self)
-        vbox.addWidget(self.struc_widget)
-
-        vbox.addStretch(1)
-        
-    def batch_options(self):
-        return "AslData", self.struc_widget.get_options()
-
-    def get_process(self):
-        return self.struc_widget.process
-    
-    def get_options(self):
-        return self.struc_widget.get_options()
 
 class AslPreprocWidget(QpWidget):
     """
@@ -688,9 +600,9 @@ class AslPreprocWidget(QpWidget):
         title = TitleWidget(self, help="asl", subtitle="Basic preprocessing of ASL data %s" % __version__)
         vbox.addWidget(title)
               
-        self.struc_widget = AslStrucWidget(self.ivm, parent=self)
-        self.struc_widget.data_combo.currentIndexChanged.connect(self._data_changed)
-        vbox.addWidget(self.struc_widget)
+        self.asldata_widget = AslImageWidget(self.ivm, parent=self)
+        self.asldata_widget.data_combo.currentIndexChanged.connect(self._data_changed)
+        vbox.addWidget(self.asldata_widget)
 
         preproc_box = QtGui.QGroupBox("Preprocessing Options")
         grid = QtGui.QGridLayout()
@@ -741,12 +653,12 @@ class AslPreprocWidget(QpWidget):
         self.output_name_edited = False
         self._guess_output_name()
         # Label-control differencing only if data contains LC or CL pairs
-        pairs = "p" in self.struc_widget.struc["order"].lower()
+        pairs = self.asldata_widget.aslimage is not None and self.asldata_widget.aslimage.iaf in ("tc", "ct")
         self.sub_cb.setEnabled(pairs)
         if not pairs: self.sub_cb.setChecked(False)
 
     def _guess_output_name(self):
-        data_name = self.struc_widget.data_combo.currentText()
+        data_name = self.asldata_widget.data_combo.currentText()
         if data_name != "" and not self.output_name_edited:
             if self.sub_cb.isChecked():
                 data_name += "_diff"
@@ -763,7 +675,7 @@ class AslPreprocWidget(QpWidget):
         return self.process
 
     def get_options(self):
-        options = self.struc_widget.get_options()
+        options = self.asldata_widget.get_options()
         options["diff"] = self.sub_cb.isChecked()
         options["mean"] = self.mean_cb.isChecked() and self.mean_combo.currentIndex() == 0
         options["pwi"] = self.mean_cb.isChecked() and self.mean_combo.currentIndex() == 1
@@ -806,9 +718,9 @@ class AslBasilWidget(QpWidget):
         self.tabs = QtGui.QTabWidget()
         vbox.addWidget(self.tabs)
 
-        self.struc_widget = AslStrucWidget(self.ivm, parent=self)
-        self.struc_widget.data_combo.currentIndexChanged.connect(self._data_changed)
-        self.tabs.addTab(self.struc_widget, "Data Structure")
+        self.asldata_widget = AslImageWidget(self.ivm, parent=self)
+        self.asldata_widget.data_combo.currentIndexChanged.connect(self._data_changed)
+        self.tabs.addTab(self.asldata_widget, "Data Structure")
 
         analysis_tab = QtGui.QWidget()
         grid = QtGui.QGridLayout()
@@ -860,7 +772,7 @@ class AslBasilWidget(QpWidget):
 
     def get_options(self):
         # General defaults
-        options = self.struc_widget.get_options()
+        options = self.asldata_widget.get_options()
         options["t1"] = str(self.t1.spin.value())
         options["t1b"] = str(self.t1b.spin.value())
         options["bat"] = str(self.bat.spin.value())
@@ -1036,12 +948,13 @@ class AslMultiphaseWidget(QpWidget):
         self.tabs = QtGui.QTabWidget()
         vbox.addWidget(self.tabs)
 
-        default_struc = dict(DEFAULT_STRUC)
-        default_struc["order"] = "mrt"
-        default_struc["nphases"] = 8
-        self.struc_widget = AslStrucWidget(self.ivm, ignore_views=[RepeatsChoice, Readout, Labelling, SliceTime, Multiband, AslParamsGrid], default_struc=default_struc)
-        self.struc_widget.data_combo.currentIndexChanged.connect(self._data_changed)
-        self.tabs.addTab(self.struc_widget, "Data Structure")
+        default_metadata = dict(DEFAULT_METADATA)
+        default_metadata["iaf"] = "mp"
+        default_metadata["order"] = "lrt"
+        default_metadata["nphases"] = 8
+        self.asldata_widget = AslImageWidget(self.ivm, ignore_views=[RepeatsChoice, Readout, Labelling, SliceTime, Multiband, AslParamsGrid], default_metadata=default_metadata)
+        self.asldata_widget.data_combo.currentIndexChanged.connect(self._data_changed)
+        self.tabs.addTab(self.asldata_widget, "ASL data")
 
         analysis_tab = QtGui.QWidget()
         grid = QtGui.QGridLayout()
@@ -1077,12 +990,8 @@ class AslMultiphaseWidget(QpWidget):
 
     def _data_changed(self):
         # Change data order to multiphase if it isn't already
-        data_name = self.struc_widget.data_combo.currentText()
-        if data_name in self.ivm.data:
-            struc = self.ivm.data[data_name].metadata.get("AslData", None)
-            if struc is not None and "m" not in struc["order"]:
-                struc["order"] = "mrt"
-                self.struc_widget.set_struct(struc)
+        # FIXME not sure we want to do this!
+        pass
 
     def _biascorr_changed(self):
         biascorr = self.biascorr_cb.isChecked()
@@ -1105,7 +1014,7 @@ class AslMultiphaseWidget(QpWidget):
 
     def get_options(self):
         # General defaults
-        options = self.struc_widget.get_options()
+        options = self.asldata_widget.get_options()
         options["roi"] = self.roi.currentText()
         options["biascorr"] = self.biascorr_cb.isChecked()
         if options["biascorr"]:
@@ -1114,6 +1023,172 @@ class AslMultiphaseWidget(QpWidget):
             options["compactness"] = self.compactness.value()
             options["keep-temp"] = self.verbose_cb.isChecked()
             
+        for item in options.items():
+            self.debug("%s: %s" % item)
+        
+        return options
+
+class StructuralData(QtGui.QWidget):
+
+    def __init__(self, ivm):
+        QtGui.QWidget.__init__(self)
+        self.ivm = ivm
+        self.grid = QtGui.QGridLayout()
+        self.setLayout(self.grid)
+
+        self.grid.addWidget(QtGui.QLabel("Structural data from"), 0, 0)
+        self.data_from = Choice(["Structural image", "FSL_ANAT output"], ["img", "fsl_anat"])
+        self.data_from.sig_changed.connect(self._data_from_changed)
+        self.grid.addWidget(self.data_from, 0, 1)
+        self.struc_img = DataOption(self.ivm, include_4d=False)
+        self.grid.addWidget(self.struc_img, 0, 2)
+        self.fslanat_dir = FileOption(dirs=True)
+        
+        self.grid.setRowStretch(1, 1)
+
+    def _data_from_changed(self):
+        if self.data_from.value == "img":
+            self.grid.addWidget(self.struc_img, 0, 2)
+        else:
+            self.grid.addWidget(self.fslanat_dir, 0, 2)
+
+    def options(self):
+        return {
+            "struc" : self.struc_img.value,
+        }
+
+class CalibrationOptions(QtGui.QWidget):
+
+    def __init__(self):
+        QtGui.QWidget.__init__(self)
+        vbox = QtGui.QVBoxLayout()
+        self.setLayout(vbox)
+
+        self.optbox = OptionBox()
+        vbox.addWidget(self.optbox)
+        vbox.addStretch(1)
+
+    def options(self):
+        return self.optbox.values()
+
+class CorrectionOptions(QtGui.QWidget):
+
+    def __init__(self):
+        QtGui.QWidget.__init__(self)
+        vbox = QtGui.QVBoxLayout()
+        self.setLayout(vbox)
+
+        self.optbox = OptionBox()
+        vbox.addWidget(self.optbox)
+        vbox.addStretch(1)
+
+    def options(self):
+        return self.optbox.values()
+
+class AnalysisOptions(QtGui.QWidget):
+
+    def __init__(self):
+        QtGui.QWidget.__init__(self)
+        vbox = QtGui.QVBoxLayout()
+        self.setLayout(vbox)
+
+        self.optbox = OptionBox()
+        self.optbox.add("White paper mode", BoolOption(), key="wp")
+        self.optbox.add("Arterial Transit Time", Number(minval=0, maxval=2.5, default=1.3), key="bat")
+        self.optbox.add("T1 (s)", Number(minval=0, maxval=3, default=1.3), key="t1")
+        self.optbox.add("T1b (s)", Number(minval=0, maxval=3, default=1.65), key="t1b")
+        self.optbox.add("Spatial regularization", BoolOption(default=True), key="spatial")
+        self.optbox.add("T1 value uncertainty", BoolOption(default=False), key="infert1")
+        self.optbox.add("Macro vascular component", BoolOption(default=False), key="inferart")
+        self.optbox.add("Fix label duration", BoolOption(default=True), key="fixbolus")
+        self.optbox.add("Motion correction", BoolOption(default=False), key="mc")
+        self.optbox.add("Partial volume correction", BoolOption(default=False), key="pvcorr")
+        vbox.addWidget(self.optbox)
+        vbox.addStretch(1)
+
+    def options(self):
+        return self.optbox.values()
+
+class OxaslWidget(QpWidget):
+    """
+    Widget to do ASL data processing
+    """
+    def __init__(self, **kwargs):
+        QpWidget.__init__(self, name="ASL data processing", icon="asl.png", group="ASL", desc="Complete data processing for ASL data", **kwargs)
+        
+    def init_ui(self):
+        vbox = QtGui.QVBoxLayout()
+        self.setLayout(vbox)
+
+        try:
+            self.process = OxaslProcess(self.ivm)
+        except QpException, e:
+            self.process = None
+            vbox.addWidget(QtGui.QLabel(str(e)))
+            return
+        
+        title = TitleWidget(self, help="asl", subtitle="Data processing for Arterial Spin Labelling MRI %s" % __version__)
+        vbox.addWidget(title)
+              
+        cite = Citation(FAB_CITE_TITLE, FAB_CITE_AUTHOR, FAB_CITE_JOURNAL)
+        vbox.addWidget(cite)
+
+        self.tabs = QtGui.QTabWidget()
+        vbox.addWidget(self.tabs)
+
+        self.asldata = AslImageWidget(self.ivm, parent=self)
+        self.asldata.data_combo.currentIndexChanged.connect(self._data_changed)
+        self.tabs.addTab(self.asldata, "ASL data")
+
+        self.structural = StructuralData(self.ivm)
+        self.tabs.addTab(self.structural, "Structural data")
+
+        self.calibration = CalibrationOptions()
+        self.tabs.addTab(self.calibration, "Calibration")
+
+        self.corrections = CorrectionOptions()
+        self.tabs.addTab(self.corrections, "Corrections")
+
+        self.analysis = AnalysisOptions()
+        self.tabs.addTab(self.analysis, "Analysis Options")
+
+        runbox = RunBox(self.get_process, self.get_options, title="Run processing", save_option=True)
+        vbox.addWidget(runbox)
+        vbox.addStretch(1)
+
+    def activate(self):
+        self._data_changed()
+
+    def _data_changed(self):
+        pass
+
+    def batch_options(self):
+        return "Oxasl", self.get_options()
+
+    def get_process(self):
+        return self.process
+
+    def _infer(self, options, param, selected):
+        options["infer%s" % param] = selected
+
+    def get_options(self):
+        # General defaults
+        options = self.asldata.get_options()
+        options.update(self.structural.options())
+        options.update(self.analysis.options())
+
+        #options["t1"] = str(self.t1.spin.value())
+        #options["t1b"] = str(self.t1b.spin.value())
+        #options["bat"] = str(self.bat.spin.value())
+        #options["spatial"] = self.spatial_cb.isChecked()
+        
+        # FIXME batsd
+
+        #self._infer(options, "tiss", True)
+        #self._infer(options, "t1", self.t1_cb.isChecked())
+        #self._infer(options, "art", self.mv_cb.isChecked())
+        #self._infer(options, "tau", not self.fixtau_cb.isChecked())
+       
         for item in options.items():
             self.debug("%s: %s" % item)
         

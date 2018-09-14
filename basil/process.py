@@ -15,7 +15,7 @@ Process options are used to set standard attributes on the ``oxasl.Workspace`` o
 In addition, Quantiphyse options which represent data names are transformed into 
 ``fsl.data.image.Image`` objects.
 
- - ``oxasl.AslImage`` <-> ``quantiphyse.data.QpData`` plus ``AslData`` metadata
+ - ``oxasl.AslImage`` <-> ``quantiphyse.data.QpData`` with ``AslData`` metadata
 
 Additional information stored in the ``oxasl.AslImage`` structure is handled
 in quantiphyse using the metadata extensions.
@@ -29,54 +29,97 @@ from quantiphyse.data import DataGrid, NumpyData
 from quantiphyse.utils import get_plugins, QpException
 from quantiphyse.utils.batch import Script
 from quantiphyse.processes import Process
+from quantiphyse.utils.cmdline import OutputStreamMonitor, LogProcess
 
 from .multiphase_template import BIASCORR_MC_YAML, BASIC_YAML, DELETE_TEMP
 
-def qpdata_to_fslimage(qpd):
-    """ Convert QpData to fsl.data.image.Image"""
-    from oxasl.data.image import Image
-    return Image(qpd.raw(), name=qpd.name, xform=qpd.grid.affine)
+METADATA_ATTRS = ["iaf", "ibf", "order", "tis", "plds", "rpts", "taus", "tau", "bolus", "casl", "nphases", "nenc", "slicedt", "sliceband"]
 
+def qpdata_to_fslimage(qpd, grid=None):
+    """ 
+    Convert QpData to fsl.data.image.Image
+    """
+    from fsl.data.image import Image
+    if grid is None:
+        return Image(qpd.raw(), name=qpd.name, xform=qpd.grid.affine)
+    else:
+        return Image(qpd.resample(grid), name=qpd.name, xform=grid.affine)
+        
 def fslimage_to_qpdata(img, name=None):
     """ Convert fsl.data.image.Image to QpData """
     if not name: name = img.name
     return NumpyData(img.data, grid=DataGrid(img.shape[:3], img.voxToWorldMat), name=name)
 
-def qpdata_to_aslimage(qpd, options):
-    """ Convert QpData to oxasl.AslImage using stored metadata where available """
+def qpdata_to_aslimage(qpd, options=None, metadata=None, grid=None):
+    """ 
+    Convert QpData to oxasl.AslImage using stored metadata where available 
+    """
 
-    # Get already defined structure if there is one. Override it with
-    # specified structure options
-    struc = qpd.metadata.get("AslData", {})
-        
-    for opt in ["order", "rpts", "taus", "casl", "tis", "plds", "nphases"]:
-        val = options.pop(opt, None)
-        if val is not None:
-            struc[opt] = val
-        else:
-            struc.pop(opt, None)
+    # If metadata is not provided, get the existing metadata
+    if metadata is None:
+        metadata = qpd.metadata.get("AslData", {})
+    
+    # If options are provided, use them to override existing metadata
+    if options:
+        for opt in METADATA_ATTRS:
+            val = options.pop(opt, None)
+            if val is not None:
+                metadata[opt] = val
+            else:
+                metadata.pop(opt, None)
 
-    # Create AslImage object, this will fail if structure information is 
-    # insufficient or inconsistent
+    # Create AslImage object, this will fail if metadat is insufficient or inconsistent
     from oxasl import AslImage
-    asldata = AslImage(qpd.raw(), name=qpd.name,
-                       tis=struc.get("tis", None),
-                       plds=struc.get("plds", None), 
-                       rpts=struc.get("rpts", None), 
-                       order=struc.get("order", None),
-                       nphases=struc.get("nphases", None))
+    if grid is None:
+        aslimage = AslImage(qpd.raw(), name=qpd.name, xform=qpd.grid.affine, **metadata)
+    else:
+        aslimage = AslImage(qpd.resample(grid), name=qpd.name, xform=grid.affine, **metadata)
                     
-    # On success, set structure metadata so other widgets/processes can use it
-    qpd.metadata["AslData"] = struc
-    return asldata
+    return aslimage, metadata
 
-def aslimage_to_qpdata(qpd):
-    """ Convert oxasl.AslImage to QpData storing additional information as metadata """
-    pass
+def aslimage_to_metadata(aslimage):
+    metadata = {}
+    for opt in METADATA_ATTRS:
+        if opt == "tis" and aslimage.have_plds:
+            # Write PLDs only for PLD data sets
+            continue
+        if hasattr(aslimage, opt):
+            val = getattr(aslimage, opt)
+            if val is not None:
+                metadata[opt] = val
+    return metadata
 
-def workspace_from_options(options):
-    """ Create an oxasl.Workspace object from process options """
-    pass
+def aslimage_to_qpdata(aslimage):
+    """ 
+    Convert oxasl.AslImage to QpData storing additional information as metadata 
+    """
+    qpd = fslimage_to_qpdata(aslimage)
+    metadata = aslimage_to_metadata(aslimage)
+    qpd.metadata["AslData"] = metadata
+    return qpd
+
+def workspace_from_options(options, images, grid, ivm):
+    """ 
+    Create an oxasl.Workspace object from process options 
+    """
+    from oxasl import Workspace
+    wsp = Workspace(log=StringIO(), **options)
+
+    for key in images:
+        if key in options:
+            data_name = options[key]
+            data = ivm.data.get(data_name, None)
+            if data is not None:
+                setattr(wsp, key, qpdata_to_fslimage(data, grid=grid))
+            else:
+                raise QpException("Data not found: %s" % data_name)
+
+    # Clear out options otherwise they will generate warnings. 
+    # We have to hope that the process will warn us about unused options
+    for key in options.keys():
+        options.pop(key)
+
+    return wsp
 
 class AslProcess(Process):
     """ 
@@ -93,11 +136,11 @@ class AslProcess(Process):
         """ 
         Get the main data set and construct an AslData instance from it 
         """
-        data = self.get_data(options)
-
-        self.asldata = qpdata_to_aslimage(data, options)
-        self.struc = data.metadata["AslData"]
-        self.grid = data.grid
+        self.data = self.get_data(options)
+        self.asldata, self.struc = qpdata_to_aslimage(self.data, options)
+        # Set the metadata on the data
+        self.data.metadata["AslData"] = self.struc
+        self.grid = self.data.grid
 
 class AslDataProcess(AslProcess):
     """
@@ -116,9 +159,10 @@ class AslPreprocProcess(AslProcess):
     PROCESS_NAME = "AslPreproc"
 
     def run(self, options):
-        """ Run the process """
-        from oxasl import AslImage, basil, calib
-        from fsl.data.image import Image
+        """ 
+        Run preprocessing steps and add the output to the IVM
+        """
+        from oxasl import AslImage
 
         self.get_asldata(options)
 
@@ -134,24 +178,30 @@ class AslPreprocProcess(AslProcess):
         elif options.pop("pwi", False):
             self.asldata = self.asldata.perf_weighted()
 
-        output_name = options.pop("output-name", self.asldata.name + "_preproc")
-        self.ivm.add_data(self.asldata[:], name=output_name, grid=self.grid, make_current=True)
-
         if isinstance(self.asldata, AslImage):
-            new_struc = dict(self.struc)
-            for opt in ["rpts", "tis", "taus", "order", "casl", "plds"]:
-                if hasattr(self.asldata, opt):
-                    new_struc[opt] = getattr(self.asldata, opt)
+            qpd = aslimage_to_qpdata(self.asldata)
+        else:
+            qpd = fslimage_to_qpdata(self.asldata)
 
-            self.debug("New structure is")
-            self.debug(str(new_struc))
-            self.ivm.data[output_name].metadata["AslData"] = new_struc
+        output_name = options.pop("output-name", self.asldata.name + "_preproc")
+        self.ivm.add(qpd, name=output_name, make_current=True)
 
 class BasilProcess(AslProcess):
     """
     Process which runs the multi-step Basil ASL model fitting method
     """
     PROCESS_NAME = "Basil"
+
+    OUTPUT_RENAME = {
+        "mean_ftiss" : "perfusion",
+        "mean_delttiss" : "arrival",
+        "mean_fblood" : "aCBV",
+        "mean_tau" : "duration",
+        "std_ftiss" : "perfusion_std",
+        "std_delttiss" : "arrival_std",
+        "std_fblood" : "aCBV_std",
+        "std_tau" : "duration_std",
+    }
 
     def __init__(self, ivm, **kwargs):
         try:
@@ -168,67 +218,24 @@ class BasilProcess(AslProcess):
 
     def run(self, options):
         """ Run the process """
-        from oxasl import Workspace, AslImage, basil, calib
-        from fsl.data.image import Image
+        from oxasl import basil
  
         self.get_asldata(options)
         self.asldata = self.asldata.diff().reorder("rt")
-
-        # FIXME Necesssary for pre-processed data and dummy ROI to be in the IVM
-        self.ivm.add_data(self.asldata[:], name=self.asldata.name, grid=self.grid)
+        self.ivm.add(self.asldata.data, grid=self.grid, name=self.asldata.name)
         roi = self.get_roi(options, self.grid)
         if roi.name not in self.ivm.rois:
-            self.ivm.add_roi(roi)
-
-        # Take copy of options and clear out remainder, to avoid 'unconsumed options' 
-        # warnings. This does risk genuinely unrecognized options going unnoticed
-        # (although there will be warnings in the Fabber log)
-        basil_options = dict(options)
-        for key in options.keys():
-            options.pop(key)
-
-        # Convert image options into fsl.Image objects, also check they exist in the IVM
-        # Names and descriptions of options which are images
-        images = {
-            "t1im": "T1 map", 
-            "pwm" : "White matter PV map",
-            "pgm" : "Grey matter PV map",
-        }
-        
-        basil_options["mask"] = Image(roi.raw(), name=roi.name)
-        for opt in images:
-            if opt in basil_options:
-                data_name = basil_options.pop(opt)
-                data = self.ivm.data.get(data_name, self.ivm.rois.get(data_name, None))
-                if data is not None:
-                    basil_options[opt] = Image(data.resample(self.grid).raw(), name=data.name)
-                else:
-                    raise QpException("Data not found: %s" % data_name)
-
-        # Taus are relevant only for CASL labelling
-        # Try to use a single value where possible
-        if self.struc["casl"]:
-            basil_options["casl"] = ""
-            taus = self.struc["taus"]
-            if min(taus) == max(taus):
-                basil_options["tau"] = taus[0]
-            else:
-                for idx, tau in enumerate(taus):
-                    basil_options["tau%i" % (idx+1)] = tau
-
-        # For CASL obtain TI by adding PLD to tau
-        for idx, tival in enumerate(self.asldata.tis):
-            if self.struc["casl"]:
-                tival += taus[idx]
-            basil_options["ti%i" % (idx+1)] = tival
+            self.ivm.add(roi)
 
         self.debug("Basil options: ")
-        self.debug(basil_options)
-        logbuf = StringIO()
-        wsp = Workspace(log=logbuf, **basil_options)
-        self.steps = basil.basil_steps(wsp, self.asldata)
+        self.debug(options)
 
-        self.log = logbuf.getvalue()
+        wsp = workspace_from_options(options, images=["t1im", "pwm", "pgm"], grid=self.grid, ivm=self.ivm)
+        wsp.asldata = self.asldata
+        wsp.mask = qpdata_to_fslimage(roi)
+
+        self.steps = basil.basil_steps(wsp, self.asldata)
+        self.log = wsp.log.getvalue()
         self.step_num = 0
         self.status = Process.RUNNING
         self._next_step()
@@ -239,7 +246,7 @@ class BasilProcess(AslProcess):
 
     def output_data_items(self):
         """ :return: list of data items output by the process """
-        return ["perfusion", "arrival", "aCBV", "duration", "perfusion_std", "arrival_std", "aCBV_std", "duration_std"]
+        return self.OUTPUT_RENAME.values()
         
     def _next_step(self):
         if self.status != self.RUNNING:
@@ -257,37 +264,38 @@ class BasilProcess(AslProcess):
             self.steps = []
             self.step_num = 0
             if "finalMVN" in self.ivm.data:
-                self.ivm.delete_data("finalMVN")
+                self.ivm.delete("finalMVN")
             self.sig_finished.emit(self.status, self.log, self.exception)
             self.ivm.set_current_data("perfusion")
 
+    #def fabber(options, output=LOAD, ref_nii=None, progress=None, **kwargs):
     def _start_fabber(self, step):
+        from fsl.data.image import Image
         self.sig_step.emit(step.desc)
 
         options = dict(step.options)
         options["model-group"] = "asl"
-        options["data"] = options["data"].name
-        options["roi"] = options.pop("mask").name
+        for key in options.keys():
+            val = options[key]
+            if isinstance(val, Image):
+                print("Setting %s=%s" % (key, val.name))
+                if key == "mask":
+                    options["roi"] = val.name
+                    options.pop(key)
+                else:
+                    options[key] = val.name
+        
         if self.step_num == len(self.steps):
             # Final step - save stuff we're interested in
-            options["save-mean"] = ""
-            options["save-std"] = ""
-            options["save-model-fit"] = ""
+            options["save-mean"] = True
+            options["save-std"] = True
+            options["save-model-fit"] = True
         else:
             # Just save the MVN so we can continue from it
-            options["save-mvn"] = ""
+            options["save-mvn"] = True
 
         # Rename output data to match oxford_asl
-        options["output-rename"] = {
-            "mean_ftiss" : "perfusion",
-            "mean_delttiss" : "arrival",
-            "mean_fblood" : "aCBV",
-            "mean_tau" : "duration",
-            "std_ftiss" : "perfusion_std",
-            "std_delttiss" : "arrival_std",
-            "std_fblood" : "aCBV_std",
-            "std_tau" : "duration_std",
-        }
+        options["output-rename"] = self.OUTPUT_RENAME
 
         if self.step_num > 1:
             options["continue-from-mvn"] = "finalMVN"
@@ -398,5 +406,49 @@ class AslCalibProcess(Process):
         ## FIXME variance mode
         calibrated = calib.calibrate(wsp, img)
         self.log = logbuf.getvalue()
-        self.ivm.add_data(name=output_name, data=calibrated.data, grid=data.grid, make_current=True)
-        
+        self.ivm.add(name=output_name, data=calibrated.data, grid=data.grid, make_current=True)
+
+def qp_oxasl(worker_id, queue, asldata, images):
+    try:
+        from oxasl import Workspace
+        from oxasl.oxford_asl import oxasl
+
+        output_monitor = OutputStreamMonitor(queue)
+        wsp = Workspace(log=output_monitor)
+        wsp.asldata, _ = qpdata_to_aslimage(asldata)
+        for key, qpdata in images.items():
+            setattr(wsp, key, qpdata_to_fslimage(qpdata))
+
+        oxasl(wsp)
+        return worker_id, True, {}
+    except:
+        import sys, traceback
+        traceback.print_exc()
+        return worker_id, False, sys.exc_info()[1]
+
+class OxaslProcess(LogProcess):
+    """
+    Process which runs the Python version of oxford_asl
+    """
+    PROCESS_NAME = "Oxasl"
+
+    def __init__(self, ivm, **kwargs):
+        LogProcess.__init__(self, ivm, worker_fn=qp_oxasl, **kwargs)
+
+    def run(self, options):
+ 
+        self.data = self.get_data(options)
+        images = {
+            "mask" : self.get_roi(options, self.data.grid)
+        }
+
+        self.expected_steps = [
+            ("Pre-processing", "Pre-processing"),
+            #("Registering", "Initial ASL->Structural registration"),
+            (".*initial fit", "Initial model fitting"),
+            (".*fit on full", "Model fitting to full data"),    
+            #("segmentation", "Segmenting structural image"),
+            #("BBR registration", "Final ASL->Structural registration"),
+        ]
+        self.current_step = 0
+        self.start_bg([self.data, images])

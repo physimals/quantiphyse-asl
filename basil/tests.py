@@ -24,7 +24,7 @@ class AslPreprocWidgetTest(WidgetTest):
         self.harmless_click(self.w.run_btn)
 
     def test3dDataNoPreproc(self):
-        self.ivm.add_data(self.data_3d, grid=self.grid, name="data_3d")
+        self.ivm.add(self.data_3d, grid=self.grid, name="data_3d")
         self.w.struc_widget.set_data_name("data_3d")
         self.processEvents()
         self.assertFalse(self.error)
@@ -52,7 +52,7 @@ class AslPreprocWidgetTest(WidgetTest):
         """
         Check a single-ti data set with no preprocessing
         """
-        self.ivm.add_data(self.data_4d, grid=self.grid, name="data_4d")
+        self.ivm.add(self.data_4d, grid=self.grid, name="data_4d")
         self.w.struc_widget.set_data_name("data_4d")
         self.processEvents()
         self.assertFalse(self.error)
@@ -80,7 +80,7 @@ class AslPreprocWidgetTest(WidgetTest):
         """
         Check a single-ti data set with tag-control differencing
         """
-        self.ivm.add_data(self.data_4d, grid=self.grid, name="data_4d")
+        self.ivm.add(self.data_4d, grid=self.grid, name="data_4d")
         self.w.struc_widget.set_data_name("data_4d")
         self.processEvents()
         self.assertFalse(self.error)
@@ -126,7 +126,7 @@ class AslPreprocWidgetTest(WidgetTest):
         """
         Check a single-ti data set with the 'mean across repeats option
         """
-        self.ivm.add_data(self.data_4d, grid=self.grid, name="data_4d")
+        self.ivm.add(self.data_4d, grid=self.grid, name="data_4d")
         self.w.struc_widget.set_data_name("data_4d")
         self.processEvents()
         self.assertFalse(self.error)
@@ -173,7 +173,7 @@ class AslPreprocWidgetTest(WidgetTest):
         """
         Check a single-ti data set with reordering to 'all tags' then 'all controls'
         """
-        self.ivm.add_data(self.data_4d, grid=self.grid, name="data_4d")
+        self.ivm.add(self.data_4d, grid=self.grid, name="data_4d")
         self.w.struc_widget.set_data_name("data_4d")
         self.processEvents()
         self.assertFalse(self.error)
