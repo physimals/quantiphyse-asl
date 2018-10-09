@@ -25,7 +25,7 @@ Copyright (c) 2013-2018 University of Oxford
 
 from StringIO import StringIO
 
-from quantiphyse.data import DataGrid, NumpyData
+from quantiphyse.data import DataGrid, NumpyData, QpData
 from quantiphyse.utils import get_plugins, QpException
 from quantiphyse.utils.batch import Script
 from quantiphyse.processes import Process
@@ -408,19 +408,42 @@ class AslCalibProcess(Process):
         self.log = logbuf.getvalue()
         self.ivm.add(name=output_name, data=calibrated.data, grid=data.grid, make_current=True)
 
-def qp_oxasl(worker_id, queue, asldata, images):
+def wsp_to_dict(wsp):
+    from fsl.data.image import Image
+    from oxasl import Workspace, AslImage
+    ret = dict(vars(wsp))
+    for key in ret.keys():
+        value = ret[key] 
+        if isinstance(value, AslImage):
+            ret[key] = aslimage_to_qpdata(value)
+        elif isinstance(value, Image):
+            ret[key] = fslimage_to_qpdata(value)
+        elif isinstance(value, Workspace):
+            ret[key] = wsp_to_dict(value)
+        elif key in ("log", "fsllog", "report") or key[0] == "_":
+            ret.pop(key)
+    print(ret)
+    return ret
+
+def qp_oxasl(worker_id, queue, asldata, options):
     try:
-        from oxasl import Workspace
+        from fsl.data.image import Image
+        from oxasl import Workspace, AslImage
         from oxasl.oxford_asl import oxasl
+
+        for key, value in options.items():
+            if isinstance(value, QpData):
+                options[key] = qpdata_to_fslimage(value)
 
         output_monitor = OutputStreamMonitor(queue)
         wsp = Workspace(log=output_monitor)
         wsp.asldata, _ = qpdata_to_aslimage(asldata)
-        for key, qpdata in images.items():
-            setattr(wsp, key, qpdata_to_fslimage(qpdata))
 
         oxasl(wsp)
-        return worker_id, True, {}
+
+        print("done")
+        ret = wsp_to_dict(wsp)
+        return worker_id, True, ret
     except:
         import sys, traceback
         traceback.print_exc()
@@ -438,9 +461,7 @@ class OxaslProcess(LogProcess):
     def run(self, options):
  
         self.data = self.get_data(options)
-        images = {
-            "mask" : self.get_roi(options, self.data.grid)
-        }
+        options["mask"] = self.get_roi(options, self.data.grid)
 
         self.expected_steps = [
             ("Pre-processing", "Pre-processing"),
@@ -451,4 +472,12 @@ class OxaslProcess(LogProcess):
             #("BBR registration", "Final ASL->Structural registration"),
         ]
         self.current_step = 0
-        self.start_bg([self.data, images])
+        self.start_bg([self.data, options])
+
+    def finished(self):
+        """ Called when process finishes """
+        print("finished")
+        ret = self.worker_output[0]
+        print(ret)
+        self.ivm.add(ret["native"]["perfusion"], name="perfusion")
+        print("finished")

@@ -11,7 +11,8 @@ import numpy as np
 from quantiphyse.processes import Process
 from quantiphyse.test import WidgetTest, ProcessTest
 
-from .widgets import AslPreprocWidget, LabelType, DataOrdering, ORDER_LABELS
+from .widgets import AslPreprocWidget
+from .asldata_widget import LabelType, DataOrdering, ORDER_LABELS
 from .process import AslMultiphaseProcess
 
 class AslPreprocWidgetTest(WidgetTest):

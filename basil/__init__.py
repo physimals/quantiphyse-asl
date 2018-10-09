@@ -6,7 +6,8 @@ Copyright (c) 2016-2017 University of Oxford, Martin Craig
 """
 from quantiphyse.utils import get_local_shlib
 
-from .widgets import AslImageWidget, AslPreprocWidget, AslBasilWidget, AslCalibWidget, AslMultiphaseWidget, OxaslWidget
+from .widgets import AslPreprocWidget, AslBasilWidget, AslCalibWidget, AslMultiphaseWidget, OxaslWidget
+from .aslimage_widget import AslImageWidget
 from .process import AslDataProcess, AslPreprocProcess, BasilProcess, AslMultiphaseProcess, OxaslProcess
 from .tests import AslPreprocWidgetTest, MultiphaseProcessTest, BasilProcessTest
 
