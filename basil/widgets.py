@@ -12,8 +12,7 @@ from quantiphyse.gui.widgets import QpWidget, RoiCombo, OverlayCombo, Citation, 
 from quantiphyse.utils import QpException
 
 from .aslimage_widget import AslImageWidget
-from .oxasl_widgets import StructuralData, CalibrationOptions, CorrectionOptions, AnalysisOptions
-from .process import AslPreprocProcess, BasilProcess, AslCalibProcess, AslMultiphaseProcess, OxaslProcess
+from .process import AslPreprocProcess, BasilProcess, AslCalibProcess, AslMultiphaseProcess
 
 from ._version import __version__
 
@@ -472,69 +471,3 @@ class AslMultiphaseWidget(QpWidget):
             self.debug("%s: %s" % item)
         
         return options
-
-class OxaslWidget(QpWidget):
-    """
-    Widget to do ASL data processing
-    """
-    def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL data processing", icon="asl.png", group="ASL", desc="Complete data processing for ASL data", **kwargs)
-        
-    def init_ui(self):
-        vbox = QtGui.QVBoxLayout()
-        self.setLayout(vbox)
-
-        try:
-            self.process = OxaslProcess(self.ivm)
-        except QpException, e:
-            self.process = None
-            vbox.addWidget(QtGui.QLabel(str(e)))
-            return
-        
-        title = TitleWidget(self, help="asl", subtitle="Data processing for Arterial Spin Labelling MRI %s" % __version__)
-        vbox.addWidget(title)
-              
-        cite = Citation(FAB_CITE_TITLE, FAB_CITE_AUTHOR, FAB_CITE_JOURNAL)
-        vbox.addWidget(cite)
-
-        self.tabs = QtGui.QTabWidget()
-        vbox.addWidget(self.tabs)
-
-        self.asldata = AslImageWidget(self.ivm, parent=self)
-        self.tabs.addTab(self.asldata, "ASL data")
-
-        self.structural = StructuralData(self.ivm)
-        self.tabs.addTab(self.structural, "Structural data")
-
-        self.calibration = CalibrationOptions()
-        self.tabs.addTab(self.calibration, "Calibration")
-
-        self.corrections = CorrectionOptions()
-        self.tabs.addTab(self.corrections, "Corrections")
-
-        self.analysis = AnalysisOptions()
-        self.tabs.addTab(self.analysis, "Analysis Options")
-
-        runbox = RunBox(ivm=self.ivm, widget=self, title="Run processing", save_option=True)
-        vbox.addWidget(runbox)
-        vbox.addStretch(1)
-
-    def _options(self):
-        options = self.asldata.get_options()
-        options.update(self.structural.options())
-        options.update(self.calibration.options())
-        options.update(self.corrections.options())
-        options.update(self.analysis.options())
-
-        #options["t1"] = str(self.t1.spin.value())
-        #options["t1b"] = str(self.t1b.spin.value())
-        #options["bat"] = str(self.bat.spin.value())
-        #options["spatial"] = self.spatial_cb.isChecked()
-       
-        for item in options.items():
-            self.debug("%s: %s" % item)
-        
-        return options
-
-    def processes(self):
-        return {"Oxasl" : self._options()}

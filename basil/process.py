@@ -414,34 +414,33 @@ def wsp_to_dict(wsp):
     ret = dict(vars(wsp))
     for key in ret.keys():
         value = ret[key] 
-        if isinstance(value, AslImage):
+        if key in ("log", "fsllog", "report") or key[0] == "_":
+            ret.pop(key)
+        elif isinstance(value, AslImage):
             ret[key] = aslimage_to_qpdata(value)
         elif isinstance(value, Image):
             ret[key] = fslimage_to_qpdata(value)
         elif isinstance(value, Workspace):
             ret[key] = wsp_to_dict(value)
-        elif key in ("log", "fsllog", "report") or key[0] == "_":
-            ret.pop(key)
+    print("Workspace to dictionary: ")
     print(ret)
     return ret
 
 def qp_oxasl(worker_id, queue, asldata, options):
     try:
-        from fsl.data.image import Image
-        from oxasl import Workspace, AslImage
+        from oxasl import Workspace
         from oxasl.oxford_asl import oxasl
 
         for key, value in options.items():
             if isinstance(value, QpData):
                 options[key] = qpdata_to_fslimage(value)
+        options["asldata"], _ = qpdata_to_aslimage(asldata)
 
+        print(options)
         output_monitor = OutputStreamMonitor(queue)
-        wsp = Workspace(log=output_monitor)
-        wsp.asldata, _ = qpdata_to_aslimage(asldata)
-
+        wsp = Workspace(log=output_monitor, **options)
         oxasl(wsp)
 
-        print("done")
         ret = wsp_to_dict(wsp)
         return worker_id, True, ret
     except:
@@ -462,6 +461,10 @@ class OxaslProcess(LogProcess):
  
         self.data = self.get_data(options)
         options["mask"] = self.get_roi(options, self.data.grid)
+        # FIXME this is not really on...
+        for key in options.keys():
+            if key in ("struc", "calib", "cref", "cblip"):
+                options[key] = self.ivm.data[options[key]]
 
         self.expected_steps = [
             ("Pre-processing", "Pre-processing"),
@@ -476,8 +479,5 @@ class OxaslProcess(LogProcess):
 
     def finished(self):
         """ Called when process finishes """
-        print("finished")
         ret = self.worker_output[0]
-        print(ret)
-        self.ivm.add(ret["native"]["perfusion"], name="perfusion")
-        print("finished")
+        self.ivm.add(ret["output"]["native"]["perfusion"], name="perfusion")
