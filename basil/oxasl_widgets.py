@@ -6,7 +6,7 @@ Copyright (c) 2013-2018 University of Oxford
 
 from __future__ import division, unicode_literals, absolute_import
 
-from PySide import QtGui
+from PySide import QtGui, QtCore
 
 from quantiphyse.gui.options import OptionBox, ChoiceOption, NumericOption, BoolOption, DataOption, FileOption
 from quantiphyse.gui.widgets import QpWidget, TitleWidget, Citation, RunBox
@@ -29,22 +29,6 @@ class StructuralData(QtGui.QWidget):
     def __init__(self, ivm):
         QtGui.QWidget.__init__(self)
         self.ivm = ivm
-        #self.grid = QtGui.QGridLayout()
-        #self.setLayout(self.grid)
-
-        #self.grid.addWidget(QtGui.QLabel("Structural data from"), 0, 0)
-        #self.data_from = ChoiceOption(["Structural image", "FSL_ANAT output"], ["img", "fsl_anat"])
-        #self.data_from.sig_changed.connect(self._data_from_changed)
-        #self.grid.addWidget(self.data_from, 0, 1)
-
-        #self.struc_img = DataOption(self.ivm, include_4d=False)
-        #self.grid.addWidget(self.struc_img, 0, 2)
-        #self.fslanat_dir = FileOption(dirs=True)
-        
-        #self.grid.addWidget(QtGui.QLabel("Segmentation"), 1, 0)
-        #self.seg_from = ChoiceOption(["FSL FAST ", "FSL_ANAT output", "Manual"], ["fast", "fsl_anat", "manual"])
-        #self.seg_from.sig_changed.connect(self._seg_from_changed)
-        #self.grid.addWidget(self.seg_from, 1, 1)
 
         vbox = QtGui.QVBoxLayout()
         self.setLayout(vbox)
@@ -59,9 +43,6 @@ class StructuralData(QtGui.QWidget):
         self.optbox.add("Structural image", DataOption(self.ivm, include_4d=False), key="struc")
         self.optbox.add("FSL_ANAT directory", FileOption(dirs=True), key="fslanat")
         self.optbox.set_visible("fslanat", False)
-
-        #self.optbox.add("Segmentation", ChoiceOption(["FSL FAST ", "FSL_ANAT", "Manual"], ["fast", "fsl_anat", "manual"]), key="seg_src")
-        #self.optbox.option("seg_src").sig_changed.connect(self._seg_from_changed)
         
         self.optbox.add("Override automatic segmentation")
         self.optbox.add("Brain image", DataOption(self.ivm, include_4d=False), key="struc_bet", checked=True)
@@ -94,6 +75,7 @@ class CalibrationOptions(QtGui.QWidget):
         self.optbox.option("cmethod").sig_changed.connect(self._calib_method_changed)
         self.optbox.add("Calibration image", DataOption(self.ivm), key="calib") 
         self.optbox.add("Sequence TR (s)", NumericOption(minval=0, maxval=20, default=3.2, step=0.1), key="tr")
+        self.optbox.add("Sequence TE (ms)", NumericOption(minval=0, maxval=100, default=0, step=5), key="te")
         self.optbox.add("Calibration gain", NumericOption(minval=0, maxval=5, default=1, step=0.05), key="cgain")
         self.optbox.add("Inversion efficiency", NumericOption(minval=0, maxval=1, default=0.98, step=0.05), key="alpha")  
         vbox.addWidget(self.optbox)
@@ -112,8 +94,7 @@ class CalibrationOptions(QtGui.QWidget):
         self.refregion_opts.add("Reference T1 (s)", NumericOption(minval=0, maxval=10, default=4.3, step=0.1), key="t1r")
         self.refregion_opts.add("Reference T2 (ms)", NumericOption(minval=0, maxval=2000, default=750, step=50), key="t2r")
         self.refregion_opts.add("Reference partition coefficient (ms)", NumericOption(minval=0, maxval=5, default=1.15, step=0.05), key="pcr")
-        self.refregion_opts.add("Sequence TE (ms)", NumericOption(minval=0, maxval=100, default=0, step=5), key="te")
-        self.refregion_opts.add("Blood T1 (ms)", NumericOption(minval=0, maxval=2000, default=150, step=50), key="t1b")
+        self.refregion_opts.add("Blood T2 (ms)", NumericOption(minval=0, maxval=2000, default=150, step=50), key="t2b")
         self.refregion_opts.setVisible(False)
         vbox.addWidget(self.refregion_opts)
 
@@ -131,10 +112,90 @@ class CalibrationOptions(QtGui.QWidget):
             opts.update(self.voxelwise_opts.values())
         else:
             opts.update(self.refregion_opts.values())
+        return opts
 
 class PreprocOptions(QtGui.QWidget):
     """
     OXASL processing options related to corrections (motion, distortion etc)
+    """
+    sig_enable_tab = QtCore.Signal(str, bool)
+
+    def __init__(self, ivm):
+        QtGui.QWidget.__init__(self)
+        self.ivm = ivm
+        vbox = QtGui.QVBoxLayout()
+        self.setLayout(vbox)
+
+        self.optbox = OptionBox()
+
+        self.optbox.add("Motion correction", BoolOption(default=True), key="mc")
+        opt = self.optbox.add("Deblurring", BoolOption(), key="deblur")
+        opt.sig_changed.connect(self._deblur_changed)
+        opt = self.optbox.add("ENABLE volume selection", BoolOption(), key="enable")
+        opt.sig_changed.connect(self._enable_changed)
+        self.optbox.add("Distortion correction", ChoiceOption(["Fieldmap", "Phase encoding reversed calibration"], ["fmap", "cblip"]), key="distcorr", checked=True)
+        self.optbox.option("distcorr").sig_changed.connect(self._distcorr_changed)
+        self.optbox.add("Phase encode direction", ChoiceOption(["x", "y", "z", "-x", "-y", "-z"]), key="pedir")
+        self.optbox.add("Echo spacing", NumericOption(minval=0, maxval=1, step=0.01), key="echospacing")
+        vbox.addWidget(self.optbox)
+
+        self.fmap_opts = OptionBox("Fieldmap distortion correction")
+        self.fmap_opts.add("Fieldmap image (rads)", DataOption(self.ivm, include_4d=False), key="fmap")
+        self.fmap_opts.add("Fieldmap magnitude image (rads)", DataOption(self.ivm, include_4d=False), key="fmapmag")
+        self.fmap_opts.add("Fieldmap magnitude brain image (rads)", DataOption(self.ivm, include_4d=False), key="fmapmagbrain")        
+        vbox.addWidget(self.fmap_opts)
+
+        self.cblip_opts = OptionBox("Phase-encoding reversed distortion correction")
+        self.cblip_opts.add("Phase-encode reversed image", DataOption(self.ivm, include_4d=False), key="cblip")
+        vbox.addWidget(self.cblip_opts)
+        
+        vbox.addStretch(1)
+        self._distcorr_changed()
+
+    def _deblur_changed(self):
+        self.sig_enable_tab.emit("deblur", self.optbox.option("deblur").value)
+
+    def _enable_changed(self):
+        self.sig_enable_tab.emit("enable", self.optbox.option("enable").value)
+
+    def _distcorr_changed(self):
+        enabled = self.optbox.option("distcorr").isEnabled()
+        distcorr =  self.optbox.option("distcorr").value
+        self.fmap_opts.setVisible(enabled and distcorr == "fmap")
+        self.cblip_opts.setVisible(enabled and distcorr == "cblip")
+        self.optbox.set_visible("pedir", enabled)
+        self.optbox.set_visible("echospacing", enabled)
+
+    def options(self):
+        """ :return: Options as dictionary """
+        return self.optbox.values()
+
+class DistcorrOptions(QtGui.QWidget):
+    """
+    OXASL processing options related to distortion correction
+    """
+
+    def __init__(self):
+        QtGui.QWidget.__init__(self)
+        vbox = QtGui.QVBoxLayout()
+        self.setLayout(vbox)
+
+        self.optbox = OptionBox()
+        self.optbox.add("Distortion correction type", ChoiceOption(["None", "Fieldmap", "CBLIP"], [None, "fmap", "cblip"]), key="distcorr_type")
+        self.optbox.option("distcorr_type").sig_changed.connect(self._distcorr_type_changed)
+        vbox.addWidget(self.optbox)
+        vbox.addStretch(1)
+
+    def _distcorr_type_changed(self):
+        pass
+
+    def options(self):
+        """ :return: Options as dictionary """
+        return self.optbox.values()
+
+class EnableOptions(QtGui.QWidget):
+    """
+    OXASL processing options related to ENABLE preprocessing
     """
 
     def __init__(self):
@@ -150,6 +211,25 @@ class PreprocOptions(QtGui.QWidget):
         """ :return: Options as dictionary """
         return self.optbox.values()
 
+class DeblurOptions(QtGui.QWidget):
+    """
+    OXASL processing options related to oxasl_deblur preprocessing
+    """
+
+    def __init__(self):
+        QtGui.QWidget.__init__(self)
+        vbox = QtGui.QVBoxLayout()
+        self.setLayout(vbox)
+
+        self.optbox = OptionBox()
+        vbox.addWidget(self.optbox)
+        vbox.addStretch(1)
+
+    def options(self):
+        """ :return: Options as dictionary """
+        return self.optbox.values()
+
+
 class AnalysisOptions(QtGui.QWidget):
     """
     OXASL processing options related to model fitting analysis
@@ -162,6 +242,7 @@ class AnalysisOptions(QtGui.QWidget):
 
         self.optbox = OptionBox()
         self.optbox.add("White paper mode", BoolOption(), key="wp")
+        self.optbox.option("wp").sig_changed.connect(self._wp_changed)
         self.optbox.add("Arterial Transit Time", NumericOption(minval=0, maxval=2.5, default=1.3), key="bat")
         self.optbox.add("T1 (s)", NumericOption(minval=0, maxval=3, default=1.3), key="t1")
         self.optbox.add("T1b (s)", NumericOption(minval=0, maxval=3, default=1.65), key="t1b")
@@ -173,6 +254,9 @@ class AnalysisOptions(QtGui.QWidget):
         self.optbox.add("Partial volume correction", BoolOption(default=False), key="pvcorr")
         vbox.addWidget(self.optbox)
         vbox.addStretch(1)
+
+    def _wp_changed(self):
+        pass
 
     def options(self):
         """ :return: Options as dictionary """
@@ -206,17 +290,19 @@ class OxaslWidget(QpWidget):
         vbox.addWidget(self.tabs)
 
         self.asldata = AslImageWidget(self.ivm, parent=self)
+        # FIXME connect to signal to enable/disable VEASL
         self.tabs.addTab(self.asldata, "ASL data")
 
-        self.preproc = PreprocOptions()
+        self.preproc = PreprocOptions(self.ivm)
+        self.preproc.sig_enable_tab.connect(self._enable_tab)
         self.tabs.addTab(self.preproc, "Preprocessing")
 
         # Only add these if enabled in preprocessing
-        # e.g. self.tabs.insertTab(self.tabs.indexOf(self.preproc)+1, self.veasl)
-        # self.tabs.removeTab(self.tabs.indexOf(self.veasl))
-        #self.veasl = VeaslOptions()
-        #self.enable = EnableOptions()
-        #self.deblur = DeblurOptions()
+        self._optional_tabs = {
+            #"veasl" :  VeaslOptions(),
+            "enable" : EnableOptions(),
+            "deblur" : DeblurOptions(),
+        }
 
         self.structural = StructuralData(self.ivm)
         self.tabs.addTab(self.structural, "Structural data")
@@ -230,6 +316,12 @@ class OxaslWidget(QpWidget):
         runbox = RunBox(ivm=self.ivm, widget=self, title="Run processing", save_option=True)
         vbox.addWidget(runbox)
         vbox.addStretch(1)
+
+    def _enable_tab(self, name, enable):
+        widget = self._optional_tabs[name]
+        self.tabs.removeTab(self.tabs.indexOf(widget))
+        if enable:
+            self.tabs.insertTab(self.tabs.indexOf(self.preproc)+1, widget, name.title())
 
     def _options(self):
         options = self.asldata.get_options()
