@@ -21,22 +21,29 @@ FAB_CITE_TITLE = "Variational Bayesian inference for a non-linear forward model"
 FAB_CITE_AUTHOR = "Chappell MA, Groves AR, Whitcher B, Woolrich MW."
 FAB_CITE_JOURNAL = "IEEE Transactions on Signal Processing 57(1):223-236, 2009."
 
-class StructuralData(QtGui.QWidget):
+class OxaslOptionWidget(QtGui.QWidget):
+    def __init__(self, ivm=None):
+        QtGui.QWidget.__init__(self)
+        self.ivm = ivm
+
+        self.vbox = QtGui.QVBoxLayout()
+        self.setLayout(vbox)
+
+        self.optbox = OptionBox()
+        self.vbox.addWidget(self.optbox)
+        self.init_ui()
+        self.vbox.addStretch(1)
+        
+    def options(self):
+        """ :return: Options as dictionary """
+        return self.optbox.values()
+
+class StructuralData(OxaslOptionWidget):
     """
     OXASL processing options related to structural data
     """
 
-    def __init__(self, ivm):
-        QtGui.QWidget.__init__(self)
-        self.ivm = ivm
-
-        vbox = QtGui.QVBoxLayout()
-        self.setLayout(vbox)
-
-        self.optbox = OptionBox()
-        vbox.addWidget(self.optbox)
-        vbox.addStretch(1)
-
+    def init_ui(self):
         self.optbox.add("Structural data from", ChoiceOption(["Structural image", "FSL_ANAT output"], ["img", "fsl_anat"]), key="struc_src")
         self.optbox.option("struc_src").sig_changed.connect(self._data_from_changed)
         
@@ -54,23 +61,13 @@ class StructuralData(QtGui.QWidget):
         struc_img = self.optbox.option("struc_src").value == "img"
         self.optbox.set_visible("struc", struc_img)
         self.optbox.set_visible("fslanat", not struc_img)
-        
-    def options(self):
-        """ :return: Options as dictionary """
-        return self.optbox.values()
 
-class CalibrationOptions(QtGui.QWidget):
+class CalibrationOptions(OxaslOptionWidget):
     """
     OXASL processing options related to calibration
     """
 
-    def __init__(self, ivm):
-        QtGui.QWidget.__init__(self)
-        self.ivm = ivm
-        vbox = QtGui.QVBoxLayout()
-        self.setLayout(vbox)
-
-        self.optbox = OptionBox()
+    def init_ui(self):
         self.optbox.add("Calibration method", ChoiceOption(["Voxelwise", "Reference region"], ["voxelwise", "single"]), key="cmethod")
         self.optbox.option("cmethod").sig_changed.connect(self._calib_method_changed)
         self.optbox.add("Calibration image", DataOption(self.ivm), key="calib") 
@@ -78,17 +75,15 @@ class CalibrationOptions(QtGui.QWidget):
         self.optbox.add("Sequence TE (ms)", NumericOption(minval=0, maxval=100, default=0, step=5), key="te")
         self.optbox.add("Calibration gain", NumericOption(minval=0, maxval=5, default=1, step=0.05), key="cgain")
         self.optbox.add("Inversion efficiency", NumericOption(minval=0, maxval=1, default=0.98, step=0.05), key="alpha")  
-        vbox.addWidget(self.optbox)
-
+        
         self.voxelwise_opts = OptionBox("Voxelwise calibration")
         self.voxelwise_opts.add("Tissue T1", NumericOption(minval=0, maxval=10, default=1.3, step=0.05), key="t1t")
         self.voxelwise_opts.add("Tissue partition coefficient", NumericOption(minval=0, maxval=5, default=0.9, step=0.05), key="pct")
-        vbox.addWidget(self.voxelwise_opts)
+        self.vbox.addWidget(self.voxelwise_opts)
 
         self.refregion_opts = OptionBox("Reference region calibration")
-        # TODO switch T1/T2/PC defaults on tissue type
         self.refregion_opts.add("Reference type", ChoiceOption(["CSF", "WM", "GM", "Custom"]), key="tissref")
-        #self.refregion_opts.option("tissref").sig_changed.connect(self._ref_tiss_changed)
+        self.refregion_opts.option("tissref").sig_changed.connect(self._ref_tiss_changed)
         self.refregion_opts.add("Reference ROI", DataOption(self.ivm, rois=True, data=False), key="ref_mask")
         # TODO pick specific region of ROI
         self.refregion_opts.add("Reference T1 (s)", NumericOption(minval=0, maxval=10, default=4.3, step=0.1), key="t1r")
@@ -96,14 +91,24 @@ class CalibrationOptions(QtGui.QWidget):
         self.refregion_opts.add("Reference partition coefficient (ms)", NumericOption(minval=0, maxval=5, default=1.15, step=0.05), key="pcr")
         self.refregion_opts.add("Blood T2 (ms)", NumericOption(minval=0, maxval=2000, default=150, step=50), key="t2b")
         self.refregion_opts.setVisible(False)
-        vbox.addWidget(self.refregion_opts)
-
-        vbox.addStretch(1)
+        self.vbox.addWidget(self.refregion_opts)
 
     def _calib_method_changed(self):
         voxelwise = self.optbox.option("cmethod").value == "voxelwise"
         self.voxelwise_opts.setVisible(voxelwise)
         self.refregion_opts.setVisible(not voxelwise)
+
+    def _ref_tiss_changed(self):
+        ref_type = self.ref_type.combo.currentText()
+        if ref_type != "Custom":
+            from oxasl.calib import tissue_defaults
+            t1, t2, t2star, pc = tissue_defaults(ref_type)
+            self.refregion_opts.option("t1r").value = t1
+            self.refregion_opts.option("t2r").value = t2
+            self.refregion_opts.option("pcr").value = pc
+        else:
+            # Do nothing - user must choose their own values
+            pass
 
     def options(self):
         """ :return: Options as dictionary """
@@ -114,20 +119,13 @@ class CalibrationOptions(QtGui.QWidget):
             opts.update(self.refregion_opts.values())
         return opts
 
-class PreprocOptions(QtGui.QWidget):
+class PreprocOptions(OxaslOptionWidget):
     """
     OXASL processing options related to corrections (motion, distortion etc)
     """
     sig_enable_tab = QtCore.Signal(str, bool)
 
-    def __init__(self, ivm):
-        QtGui.QWidget.__init__(self)
-        self.ivm = ivm
-        vbox = QtGui.QVBoxLayout()
-        self.setLayout(vbox)
-
-        self.optbox = OptionBox()
-
+    def init_ui(self):
         self.optbox.add("Motion correction", BoolOption(default=True), key="mc")
         opt = self.optbox.add("Deblurring", BoolOption(), key="deblur")
         opt.sig_changed.connect(self._deblur_changed)
@@ -137,19 +135,17 @@ class PreprocOptions(QtGui.QWidget):
         self.optbox.option("distcorr").sig_changed.connect(self._distcorr_changed)
         self.optbox.add("Phase encode direction", ChoiceOption(["x", "y", "z", "-x", "-y", "-z"]), key="pedir")
         self.optbox.add("Echo spacing", NumericOption(minval=0, maxval=1, step=0.01), key="echospacing")
-        vbox.addWidget(self.optbox)
 
         self.fmap_opts = OptionBox("Fieldmap distortion correction")
         self.fmap_opts.add("Fieldmap image (rads)", DataOption(self.ivm, include_4d=False), key="fmap")
         self.fmap_opts.add("Fieldmap magnitude image (rads)", DataOption(self.ivm, include_4d=False), key="fmapmag")
         self.fmap_opts.add("Fieldmap magnitude brain image (rads)", DataOption(self.ivm, include_4d=False), key="fmapmagbrain")        
-        vbox.addWidget(self.fmap_opts)
+        self.vbox.addWidget(self.fmap_opts)
 
         self.cblip_opts = OptionBox("Phase-encoding reversed distortion correction")
         self.cblip_opts.add("Phase-encode reversed image", DataOption(self.ivm, include_4d=False), key="cblip")
-        vbox.addWidget(self.cblip_opts)
+        self.vbox.addWidget(self.cblip_opts)
         
-        vbox.addStretch(1)
         self._distcorr_changed()
 
     def _deblur_changed(self):
@@ -170,97 +166,55 @@ class PreprocOptions(QtGui.QWidget):
         """ :return: Options as dictionary """
         return self.optbox.values()
 
-class DistcorrOptions(QtGui.QWidget):
+class DistcorrOptions(OxaslOptionWidget):
     """
     OXASL processing options related to distortion correction
     """
 
-    def __init__(self):
-        QtGui.QWidget.__init__(self)
-        vbox = QtGui.QVBoxLayout()
-        self.setLayout(vbox)
-
-        self.optbox = OptionBox()
+    def init_ui(self):
         self.optbox.add("Distortion correction type", ChoiceOption(["None", "Fieldmap", "CBLIP"], [None, "fmap", "cblip"]), key="distcorr_type")
         self.optbox.option("distcorr_type").sig_changed.connect(self._distcorr_type_changed)
-        vbox.addWidget(self.optbox)
-        vbox.addStretch(1)
-
+        
     def _distcorr_type_changed(self):
         pass
 
-    def options(self):
-        """ :return: Options as dictionary """
-        return self.optbox.values()
-
-class EnableOptions(QtGui.QWidget):
+class EnableOptions(OxaslOptionWidget):
     """
     OXASL processing options related to ENABLE preprocessing
     """
 
-    def __init__(self):
-        QtGui.QWidget.__init__(self)
-        vbox = QtGui.QVBoxLayout()
-        self.setLayout(vbox)
-
-        self.optbox = OptionBox()
-        vbox.addWidget(self.optbox)
-        vbox.addStretch(1)
-
-    def options(self):
-        """ :return: Options as dictionary """
-        return self.optbox.values()
-
-class DeblurOptions(QtGui.QWidget):
+    def init_ui(self):
+        pass
+        
+class DeblurOptions(OxaslOptionWidget):
     """
     OXASL processing options related to oxasl_deblur preprocessing
     """
 
-    def __init__(self):
-        QtGui.QWidget.__init__(self)
-        vbox = QtGui.QVBoxLayout()
-        self.setLayout(vbox)
-
-        self.optbox = OptionBox()
-        vbox.addWidget(self.optbox)
-        vbox.addStretch(1)
-
-    def options(self):
-        """ :return: Options as dictionary """
-        return self.optbox.values()
-
-
-class AnalysisOptions(QtGui.QWidget):
+    def init_ui(self):
+        pass
+        
+class AnalysisOptions(OxaslOptionWidget):
     """
     OXASL processing options related to model fitting analysis
     """
 
-    def __init__(self):
-        QtGui.QWidget.__init__(self)
-        vbox = QtGui.QVBoxLayout()
-        self.setLayout(vbox)
-
-        self.optbox = OptionBox()
+    def init_ui(self):
         self.optbox.add("White paper mode", BoolOption(), key="wp")
         self.optbox.option("wp").sig_changed.connect(self._wp_changed)
+        self.optbox.option("Default parameters")
         self.optbox.add("Arterial Transit Time", NumericOption(minval=0, maxval=2.5, default=1.3), key="bat")
         self.optbox.add("T1 (s)", NumericOption(minval=0, maxval=3, default=1.3), key="t1")
         self.optbox.add("T1b (s)", NumericOption(minval=0, maxval=3, default=1.65), key="t1b")
+        self.optbox.option("Model fitting options")
         self.optbox.add("Spatial regularization", BoolOption(default=True), key="spatial")
+        self.optbox.add("Fix label duration", BoolOption(default=True), key="fixbolus")
         self.optbox.add("T1 value uncertainty", BoolOption(default=False), key="infert1")
         self.optbox.add("Macro vascular component", BoolOption(default=False), key="inferart")
-        self.optbox.add("Fix label duration", BoolOption(default=True), key="fixbolus")
-        self.optbox.add("Motion correction", BoolOption(default=False), key="mc")
         self.optbox.add("Partial volume correction", BoolOption(default=False), key="pvcorr")
-        vbox.addWidget(self.optbox)
-        vbox.addStretch(1)
-
+        
     def _wp_changed(self):
         pass
-
-    def options(self):
-        """ :return: Options as dictionary """
-        return self.optbox.values()
 
 class OxaslWidget(QpWidget):
     """
