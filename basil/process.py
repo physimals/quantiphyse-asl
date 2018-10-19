@@ -23,7 +23,7 @@ in quantiphyse using the metadata extensions.
 Copyright (c) 2013-2018 University of Oxford
 """
 
-from StringIO import StringIO
+from six import StringIO
 
 from quantiphyse.data import DataGrid, NumpyData, QpData
 from quantiphyse.utils import get_plugins, QpException
