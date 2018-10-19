@@ -283,11 +283,6 @@ class OxaslWidget(QpWidget):
         options.update(self.structural.options())
         options.update(self.calibration.options())
         options.update(self.analysis.options())
-
-        #options["t1"] = str(self.t1.spin.value())
-        #options["t1b"] = str(self.t1b.spin.value())
-        #options["bat"] = str(self.bat.spin.value())
-        #options["spatial"] = self.spatial_cb.isChecked()
        
         self.debug("oxasl options:")
         for item in options.items():
