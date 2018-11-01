@@ -282,6 +282,10 @@ class LabelType(ChoiceOption, AslMetadataView):
             self.md["order"] = self.md["order"].replace("l", "")
         elif "l" not in self.md["order"]:
             self.md["order"] = "l" + self.md["order"]
+
+        if iaf == "mp" and "nphases" not in self.md:
+            self.md["nphases"] = 8
+            
         self.sig_md_changed.emit(self)
 
 class Labelling(ChoiceOption, AslMetadataView):
