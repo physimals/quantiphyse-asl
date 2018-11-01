@@ -462,10 +462,15 @@ class OxaslProcess(LogProcess):
         self.data = self.get_data(options)
         options["mask"] = self.get_roi(options, self.data.grid)
         # FIXME this is not really on...
-        for key in options.keys():
+        for key in list(options.keys()):
             if key in ("struc", "calib", "cref", "cblip"):
-                options[key] = self.ivm.data[options[key]]
-
+                if options[key]:
+                    options[key] = self.ivm.data[options[key]]
+                else:
+                    options.pop(key)
+            elif options[key] is None:
+                options.pop(key)
+                
         self.expected_steps = [
             ("Pre-processing", "Pre-processing"),
             #("Registering", "Initial ASL->Structural registration"),
