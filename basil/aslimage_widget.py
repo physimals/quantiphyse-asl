@@ -10,7 +10,7 @@ from __future__ import division, unicode_literals, absolute_import
 
 from PySide import QtCore, QtGui
 
-from quantiphyse.gui.widgets import OverlayCombo, ChoiceOption, NumericOption, OrderList, OrderListButtons, NumberGrid
+from quantiphyse.gui.widgets import OverlayCombo, ChoiceOption, NumericOption, OrderList, OrderListButtons
 from quantiphyse.utils import LogSource, QpException
 
 from .process import  qpdata_to_aslimage
@@ -24,7 +24,7 @@ ORDER_LABELS = {
         "tc" : (("Label", "Control"), ("L", "C"), "Label-Control pairs"),
         "ct" : (("Control", "Label"), ("C", "L"), "Control-Label pairs"),
         "mp" : ("Phase ", "Ph", "Phases"),
-        "ve" : ("Encoding", "Enc", "Encoding cycles"),
+        "ve" : ("Encoding ", "Enc", "Encoding cycles"),
         "diff" : ("", "", ""),
     }
 }
@@ -61,7 +61,7 @@ class AslMetadataView(object):
         """
         Sets the data whose ASL metadata is to be displayed
         
-        Sets the attributes ``data``, ``md`` and calls ``update()``
+        Sets the attributes ``data``, ``md`` and calls ``_update()``
 
         :param data: QpData object 
         """
@@ -78,9 +78,9 @@ class AslMetadataView(object):
             else:
                 self.md["order"] = "lrt"
 
-        self.update()
+        self._update()
 
-    def update(self):
+    def _update(self):
         """
         Override to update the view when the data object changes
         """
@@ -131,7 +131,7 @@ class DataStructure(QtGui.QWidget, AslMetadataView):
         self.num = {"t" : 1, "r" : 3, "l" : 2}
         grid.addWidget(self, ypos, 0, 1, 3)
 
-    def update(self):
+    def _update(self):
         self.order = self.md.get("order", "lrt")
         self.num = {
             "t" : len(self.md.get("tis", [1])),
@@ -208,7 +208,7 @@ class NumPhases(NumericOption, AslMetadataView):
         AslMetadataView.__init__(self)
         self.sig_changed.connect(self._changed)
     
-    def update(self):
+    def _update(self):
         # Phase list only visible in multiphase mode
         multiphase = self.md.get("iaf", "") == "mp"
         self.label.setVisible(multiphase)
@@ -223,6 +223,33 @@ class NumPhases(NumericOption, AslMetadataView):
             self.md["nphases"] = self.spin.value()
         else:
             self.md.pop("nphases", None)
+        self.sig_md_changed.emit(self)
+
+class NumEncodings(NumericOption, AslMetadataView):
+    """
+    Displays/Sets the number of encoding cycles for a VE data set
+    """
+
+    def __init__(self, grid, ypos):
+        NumericOption.__init__(self, "Number of encoding cycles", grid, ypos, default=8, intonly=True, minval=2)
+        AslMetadataView.__init__(self)
+        self.sig_changed.connect(self._changed)
+    
+    def _update(self):
+        # Only visible for vessel encoded data
+        ve = self.md.get("iaf", "") == "ve"
+        self.label.setVisible(ve)
+        self.spin.setVisible(ve)
+        if ve:
+            self.spin.setValue(self.md.get("nenc", 8))
+            if "nenc" not in self.md:
+                self._changed()
+
+    def _changed(self):
+        if self.spin.isVisible():
+            self.md["nenc"] = self.spin.value()
+        else:
+            self.md.pop("nenc", None)
         self.sig_md_changed.emit(self)
 
 class DataOrdering(QtCore.QObject, AslMetadataView):
@@ -247,7 +274,7 @@ class DataOrdering(QtCore.QObject, AslMetadataView):
             labels = labels[self.md.get("iaf", "tc")]
         return labels[2]
 
-    def update(self):
+    def _update(self):
         order = self.md.get("order", "lrt")
         self.group_list.setItems([self._get_label(g) for g in order[::-1]])
                      
@@ -266,12 +293,12 @@ class LabelType(ChoiceOption, AslMetadataView):
     """
 
     def __init__(self, grid, ypos):
-        self._indexes = ["tc", "ct", "diff", "mp"]
-        ChoiceOption.__init__(self, "Data format", grid, ypos, choices=["Label-control pairs", "Control-Label pairs", "Already subtracted", "Multiphase"])
+        self._indexes = ["tc", "ct", "diff", "ve", "mp"]
+        ChoiceOption.__init__(self, "Data format", grid, ypos, choices=["Label-control pairs", "Control-Label pairs", "Already subtracted", "Vessel encoded", "Multiphase"])
         AslMetadataView.__init__(self)
         self.sig_changed.connect(self._changed)
     
-    def update(self):
+    def _update(self):
         iaf = self.md.get("iaf", "tc")
         self.combo.setCurrentIndex(self._indexes.index(iaf))
         
@@ -283,9 +310,18 @@ class LabelType(ChoiceOption, AslMetadataView):
         elif "l" not in self.md["order"]:
             self.md["order"] = "l" + self.md["order"]
 
-        if iaf == "mp" and "nphases" not in self.md:
-            self.md["nphases"] = 8
+        if iaf == "mp":
+            if "nphases" not in self.md:
+                self.md["nphases"] = 8
+        else:
+            self.md.pop("nphases", None)
             
+        if iaf == "ve":
+            if "nenc" not in self.md:
+                self.md["nenc"] = 8
+        else:
+            self.md.pop("nenc", None)
+
         self.sig_md_changed.emit(self)
 
 class Labelling(ChoiceOption, AslMetadataView):
@@ -298,7 +334,7 @@ class Labelling(ChoiceOption, AslMetadataView):
         AslMetadataView.__init__(self)
         self.combo.currentIndexChanged.connect(self._changed)
     
-    def update(self):
+    def _update(self):
         self.combo.setCurrentIndex(1-int(self.md.get("casl", True)))
                       
     def _changed(self):
@@ -315,7 +351,7 @@ class Readout(ChoiceOption, AslMetadataView):
         AslMetadataView.__init__(self)
         self.combo.currentIndexChanged.connect(self._changed)
     
-    def update(self):
+    def _update(self):
         readout_2d = "slicedt" in self.md
         self.combo.setCurrentIndex(int(readout_2d))
                       
@@ -336,7 +372,7 @@ class SliceTime(NumericOption, AslMetadataView):
         AslMetadataView.__init__(self)
         self.spin.valueChanged.connect(self._changed)
     
-    def update(self):
+    def _update(self):
         readout_2d = "slicedt" in self.md
         self.label.setVisible(readout_2d)
         self.spin.setVisible(readout_2d)
@@ -372,7 +408,7 @@ class Multiband(QtCore.QObject, AslMetadataView):
         self.cb.stateChanged.connect(self._changed)
         AslMetadataView.__init__(self)
     
-    def update(self):
+    def _update(self):
         readout_2d = "slicedt" in self.md
         multiband = "sliceband" in self.md
         self.cb.setVisible(readout_2d)
@@ -401,9 +437,9 @@ class RepeatsChoice(ChoiceOption, AslMetadataView):
         AslMetadataView.__init__(self)
         self.sig_changed.connect(self._changed)
     
-    def update(self):
+    def _update(self):
         rpts = self.md.get("rpts", None)
-        var_rpts = rpts is not None and min(rpts) != max(rpts)
+        var_rpts = rpts is not None and len(rpts) > 1
         self.combo.setCurrentIndex(int(var_rpts))
 
     def _changed(self):
@@ -417,60 +453,99 @@ class RepeatsChoice(ChoiceOption, AslMetadataView):
                 self.md["rpts"] = self._get_auto_repeats()
         self.sig_md_changed.emit(self)
         
-class AslParamsGrid(NumberGrid, AslMetadataView):
+class Times(QtCore.QObject, AslMetadataView):
     """ 
-    Grid which displays TIs, taus and optionally variable repeats 
+    Displays TIs/PLDs, taus and optionally variable repeats 
     """
-
     def __init__(self, grid, ypos):
-        self.tau_header = "Bolus durations"
-        self.rpt_header = "Repeats"
-
-        NumberGrid.__init__(self, [[1.0], [1.0], [1]],
-                            row_headers=self._headers(True, True),
-                            expandable=(True, False), 
-                            fix_height=True)
-
-        grid.addWidget(self, ypos, 0, 1, 3)
-        self.sig_changed.connect(self._changed)
+        QtCore.QObject.__init__(self)
+        self._label = QtGui.QLabel(TIMING_LABELS[True])
+        self._edit = QtGui.QLineEdit()
+        self._edit.editingFinished.connect(self._edit_changed)
+        grid.addWidget(self._label, ypos, 0)
+        grid.addWidget(self._edit, ypos, 1)
         AslMetadataView.__init__(self)
-    
-    def update(self):
+
+    def _update(self):
+        if "plds" in self.md:
+            times = self.md["plds"]
+        else:
+            times = self.md.get("tis", [1.5])
+        self._label.setText(TIMING_LABELS[self.md.get("casl", True)])
+        self._edit.setText(", ".join([str(v) for v in times]))
+        
+    def _edit_changed(self):
+        try:
+            text = self._edit.text().replace(",", " ")
+            times = [float(v) for v in text.split()]
+            self.md["tis"] = times
+            self._edit.setText(" ".join([str(v) for v in times]))
+            self._edit.setStyleSheet("")
+        except ValueError:
+            # Colour edit red but don't change anything
+            self._edit.setStyleSheet("QLineEdit {background-color: red}")
+        self.sig_md_changed.emit(self)
+
+class BolusDurations(QtCore.QObject, AslMetadataView):
+    """ 
+    Displays bolus durations (taus)
+    """
+    def __init__(self, grid, ypos):
+        QtCore.QObject.__init__(self)
+        self._label = QtGui.QLabel("Bolus duration (s)")
+        self._edit = QtGui.QLineEdit()
+        self._edit.editingFinished.connect(self._edit_changed)
+        grid.addWidget(self._label, ypos, 0)
+        grid.addWidget(self._edit, ypos, 1)
+        AslMetadataView.__init__(self)
+
+    def _update(self):
+        taus = self.md.get("taus", [1.4,])
+        self._edit.setText(", ".join([str(v) for v in taus]))
+        
+    def _edit_changed(self):
+        try:
+            text = self._edit.text().replace(",", " ")
+            taus = [float(v) for v in text.split()]
+            self.md["taus"] = taus
+            self._edit.setText(" ".join([str(v) for v in taus]))
+            self._edit.setStyleSheet("")
+        except ValueError:
+            # Colour edit red but don't change anything
+            self._edit.setStyleSheet("QLineEdit {background-color: red}")
+        self.sig_md_changed.emit(self)
+
+class VariableRepeats(QtCore.QObject, AslMetadataView):
+    """ 
+    Displays variable repeats if enabled
+    """
+    def __init__(self, grid, ypos):
+        QtCore.QObject.__init__(self)
+        self._label = QtGui.QLabel("Repeats")
+        self._edit = QtGui.QLineEdit()
+        self._edit.editingFinished.connect(self._edit_changed)
+        grid.addWidget(self._label, ypos, 0)
+        grid.addWidget(self._edit, ypos, 1)
+        AslMetadataView.__init__(self)
+
+    def _update(self):
         rpts = self.md.get("rpts", None)
         var_rpts = rpts is not None
-
-        grid_values = [self.md.get("tis", [1.5]), self.md.get("taus", [1.8])]
+        self._label.setVisible(var_rpts)
+        self._edit.setVisible(var_rpts)
         if var_rpts:
-            grid_values.append(rpts)
-
-        casl = self.md.get("casl", True)
-        self._model.setVerticalHeaderLabels(self._headers(casl, var_rpts))
-        self.setValues(grid_values, validate=False)
-
-    def _headers(self, casl, rpts):
-        headers = []
-        headers.append(TIMING_LABELS[casl])
-        headers.append(self.tau_header)
-        if rpts: headers.append(self.rpt_header)
-        return headers
-
-    def _changed(self):
+            self._edit.setText(", ".join([str(v) for v in rpts]))
+        
+    def _edit_changed(self):
         try:
-            values = self.values()
+            text = self._edit.text().replace(",", " ")
+            rpts = [int(v) for v in text.split()]
+            self.md["rpts"] = rpts
+            self._edit.setText(" ".join([str(v) for v in rpts]))
+            self._edit.setStyleSheet("")
         except ValueError:
-            # Non-numeric values - don't change anything
-            return
-
-        self.md["tis"] = values[0]
-        self.md["taus"] = values[1]
-
-        try:
-            if len(values) > 2:
-                self.md["rpts"] = [int(v) for v in values[2]]
-        except ValueError:
-            # Repeats are not integers - FIXME silently ignored
-            pass
-            
+            # Colour edit red but don't change anything
+            self._edit.setStyleSheet("QLineEdit {background-color: red}")
         self.sig_md_changed.emit(self)
 
 class AslImageWidget(QtGui.QWidget, LogSource):
@@ -504,7 +579,8 @@ class AslImageWidget(QtGui.QWidget, LogSource):
         grid.addWidget(self.data_combo, 0, 1)
 
         view_classes = [LabelType, RepeatsChoice, NumPhases, DataOrdering, DataStructure,
-                        Labelling, Readout, SliceTime, Multiband, AslParamsGrid]
+                        Labelling, Readout, SliceTime, Multiband, Times,
+                        BolusDurations, VariableRepeats]
 
         self.views = []
         for idx, view_class in enumerate(view_classes):
@@ -609,7 +685,7 @@ class AslImageWidget(QtGui.QWidget, LogSource):
                 self.aslimage, _ = qpdata_to_aslimage(self.data, metadata=self.md)
             self.warn_label.setVisible(False)
             self.valid = True
-        except RuntimeError, e:
+        except ValueError as e:
             self.debug("Failed: %s", str(e))
             self.aslimage = None
             self.warn_label.setText(str(e))
