@@ -13,10 +13,10 @@ from .process import AslDataProcess, AslPreprocProcess, BasilProcess, AslMultiph
 from .tests import AslPreprocWidgetTest, MultiphaseProcessTest, BasilProcessTest
 
 QP_MANIFEST = {
-    "widgets" : [AslPreprocWidget, AslBasilWidget, AslCalibWidget, AslMultiphaseWidget, OxaslWidget],
+    "widgets" : [AslPreprocWidget, AslMultiphaseWidget, OxaslWidget],
     "fabber-libs" : [get_local_shlib("fabber_models_asl", __file__)],
     "module-dirs" : ["deps",],
-    "asl-widgets" : [AslImageWidget],
+    "qwidgets" : [AslImageWidget],
     "processes" : [BasilProcess, AslMultiphaseProcess, OxaslProcess],
     "widget-tests" : [AslPreprocWidgetTest],
     "process-tests" : [MultiphaseProcessTest, BasilProcessTest],
