@@ -10,7 +10,7 @@ from __future__ import division, unicode_literals, absolute_import
 
 from PySide import QtCore, QtGui
 
-from quantiphyse.gui.widgets import OverlayCombo, ChoiceOption, NumericOption, OrderList, OrderListButtons
+from quantiphyse.gui.widgets import OverlayCombo, ChoiceOption, NumericOption, OrderList, OrderListButtons, WarningBox
 from quantiphyse.utils import LogSource, QpException
 
 from .process import  qpdata_to_aslimage
@@ -260,12 +260,11 @@ class DataOrdering(QtCore.QObject, AslMetadataView):
     def __init__(self, grid, ypos):
         QtCore.QObject.__init__(self)
         AslMetadataView.__init__(self)
-        grid.addWidget(QtGui.QLabel("Data grouping\n(top = outermost)"), ypos, 0, alignment=QtCore.Qt.AlignTop)
+        grid.addWidget(QtGui.QLabel("Data grouping"), ypos, 0, alignment=QtCore.Qt.AlignTop)
         self.group_list = OrderList()
         grid.addWidget(self.group_list, ypos, 1)
         self.list_btns = OrderListButtons(self.group_list)
         grid.addLayout(self.list_btns, ypos, 2)
-
         self.group_list.sig_changed.connect(self._changed)
     
     def _get_label(self, order_char):
@@ -277,7 +276,7 @@ class DataOrdering(QtCore.QObject, AslMetadataView):
     def _update(self):
         order = self.md.get("order", "lrt")
         self.group_list.setItems([self._get_label(g) for g in order[::-1]])
-                     
+
     def _changed(self):
         order = ""
         for item in self.group_list.items():
@@ -438,6 +437,9 @@ class RepeatsChoice(ChoiceOption, AslMetadataView):
         self.sig_changed.connect(self._changed)
     
     def _update(self):
+        ntis = len(self.md.get("tis", self.md.get("plds", 1)))
+        self.combo.setVisible(ntis > 1)
+        self.label.setVisible(ntis > 1)
         rpts = self.md.get("rpts", None)
         var_rpts = rpts is not None and len(rpts) > 1
         self.combo.setCurrentIndex(int(var_rpts))
@@ -467,8 +469,8 @@ class Times(QtCore.QObject, AslMetadataView):
         AslMetadataView.__init__(self)
 
     def _update(self):
-        if "plds" in self.md:
-            times = self.md["plds"]
+        if self.md.get("casl", True):
+            times = self.md.get("plds", [0.25])
         else:
             times = self.md.get("tis", [1.5])
         self._label.setText(TIMING_LABELS[self.md.get("casl", True)])
@@ -478,7 +480,12 @@ class Times(QtCore.QObject, AslMetadataView):
         try:
             text = self._edit.text().replace(",", " ")
             times = [float(v) for v in text.split()]
-            self.md["tis"] = times
+            if self.md.get("casl", True):
+                self.md["plds"] = times
+                self.md.pop("tis", None)
+            else:
+                self.md["tis"] = times
+                self.md.pop("plds", None)
             self._edit.setText(" ".join([str(v) for v in times]))
             self._edit.setStyleSheet("")
         except ValueError:
@@ -578,7 +585,8 @@ class AslImageWidget(QtGui.QWidget, LogSource):
         self.data_combo.currentIndexChanged.connect(self._data_changed)
         grid.addWidget(self.data_combo, 0, 1)
 
-        view_classes = [LabelType, RepeatsChoice, NumPhases, DataOrdering, DataStructure,
+        view_classes = [LabelType, RepeatsChoice, NumPhases, NumEncodings,
+                        DataOrdering, DataStructure,
                         Labelling, Readout, SliceTime, Multiband, Times,
                         BolusDurations, VariableRepeats]
 
@@ -604,14 +612,11 @@ class AslImageWidget(QtGui.QWidget, LogSource):
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(2, 0)
+        grid.setRowStretch(len(view_classes)+2, 1)
         
         vbox.addLayout(grid)
         
-        self.warn_label = QtGui.QLabel("")
-        self.warn_label.setStyleSheet(
-            """QLabel { background-color: orange; color: black; border: 1px solid gray;
-                        border-radius: 2px; padding: 10px 10px 10px 10px;}""")
-        self.warn_label.setVisible(False)
+        self.warn_label = WarningBox()
         vbox.addWidget(self.warn_label)
 
         self._update_ui()
@@ -683,13 +688,12 @@ class AslImageWidget(QtGui.QWidget, LogSource):
             if self.md and self.data is not None:
                 self.debug("Validating metadata: %s", str(self.md))
                 self.aslimage, _ = qpdata_to_aslimage(self.data, metadata=self.md)
-            self.warn_label.setVisible(False)
+            self.warn_label.clear()
             self.valid = True
         except ValueError as e:
             self.debug("Failed: %s", str(e))
             self.aslimage = None
-            self.warn_label.setText(str(e))
-            self.warn_label.setVisible(True)
+            self.warn_label.warn(str(e))
             self.valid = False
 
     def get_options(self):
