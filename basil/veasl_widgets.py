@@ -6,8 +6,6 @@ Copyright (c) 2016-2018 University of Oxford
 
 from __future__ import division, unicode_literals, absolute_import, print_function
 
-import math
-
 import numpy as np
 from PySide import QtCore, QtGui
 import pyqtgraph as pg
@@ -73,7 +71,7 @@ class EncodingWidget(QtGui.QWidget):
         self.two_mtx.setVisible(idx == 0)
         self.mac_mtx.setVisible(idx == 1)
 
-    def set_nvols(self, nvols):
+    def set_nenc(self, nvols):
         """
         Set the total number of tag/control and encoded volumes
         """
@@ -87,6 +85,7 @@ class EncodingWidget(QtGui.QWidget):
         If enabled, this automatically generates an encoding matrix from initial vessel locations
         with either 6 or 8 encoding images
         """
+        print("setting veslocs: ", veslocs)
         self.veslocs = np.array(veslocs)
         self._autogen()
 
@@ -98,119 +97,47 @@ class EncodingWidget(QtGui.QWidget):
             self.warning.setVisible(False)
 
     def _autogen(self):
-        auto_mode = self.auto_combo.currentIndex()
-        if auto_mode == 1:
-            # Auto-generation disabled
-            return
+        if self.veslocs is not None and self.auto_combo.currentIndex() == 0:
+            try:
+                print("autogenerating encoding matrix")
+                nvols = self.nvols
+                if nvols == 0:
+                    # Default if data is not loaded
+                    nvols = 8
+                print(self.veslocs, nvols)
 
-        self._warn("")
-        nvols = self.nvols
-        if nvols == 0:
-            # Default if data is not loaded
-            nvols = 8
-            
-        if self.veslocs is None:
-            # No vessels defined
-            return
-
-        if nvols not in (6, 8):
-            self._warn("Auto-generation of encoding matrix only supported for 6 or 8 encoding cycles")
-            return
-
-        num_vessels = self.veslocs.shape[1]
-        if num_vessels != 4:
-            self._warn("Auto-generation of encoding matrix only supported with 4 inferred vessels")
-            return
-
-        lr1, lr2 = self.veslocs[0, 0], self.veslocs[0, 1]
-        ap1, ap2 = np.mean(self.veslocs[1, :2]), np.mean(self.veslocs[1, 2:])
-        two = [
-            [0, 0, 0, 0],
-            [0, 1, 0, 0],
-            [90, 2, lr1, lr2],
-            [90, 3, lr1, lr2],
-            [0, 2, ap1, ap2],
-            [0, 3, ap1, ap2],
-        ]
-        if nvols == 8:
-            # Vector from RC to LV
-            LV_minus_RC = self.veslocs[:2, 3] - self.veslocs[:2, 0]
-
-            # Want to tag RC and LV simultaneously - gradient angle required
-            # is acos[normalised(LV - RC).x]
-            tag_rad = math.acos(LV_minus_RC[0] / np.linalg.norm(LV_minus_RC))
-            tag_deg = math.degrees(tag_rad)
-
-            # Unit vector in gradient direction
-            G = [math.sin(tag_rad), math.cos(tag_rad)]
-
-            # Calculate distance from isocentre to each vessel
-            # Dot product of location with gradient unit vector
-            isodist = [sum(self.veslocs[:2, v] * G) for v in range(num_vessels)]
-            vA = (isodist[0] + isodist[3])/2
-            vB = vA + (abs(vA -isodist[1]) + abs(vA - isodist[2]))/2
-            two += [
-                [tag_deg, 2, vA, vB],
-                [tag_deg, 3, vA, vB],
-            ]
-
-        self.two_mtx.setValues(two)
-
-    def _update_imlist(self):
-        """
-        Update the imlist from the TWO encoding matrix 
-        """
-        two = np.array(self.two_mtx.values())
-        self.imlist = two[:, 1] - 1
-        inc = 1
-        for i in range(len(self.imlist)):
-            if self.imlist[i] > 0:
-                self.imlist[i] = inc
-                inc += 1
+                from oxasl_ve import veslocs_to_enc
+                print("imported")
+                two = veslocs_to_enc(self.veslocs[:2, :], nvols)
+                print("ran")
+                print(two)
+                self.two_mtx.setValues(two)
+                self._warn("")
+            except ValueError as exc:
+                self._warn(str(exc))
+            except Exception as exc:
+                print(exc)
+            except:
+                print("unexpected")
+                import traceback
+                traceback.print_exc()
         
     def _two_changed(self):
         """
         Update MAC matrix to match TWO matrix
         """
-        if self.updating: return
-
-        self._update_imlist()
-        two = np.array(self.two_mtx.values())
-
-        # Encoding cycles - second column
-        enccyc = two[:, 1] > 1
-
-        # angles TWO measures angle from AP anti-clock, MAC from LR clock
-        th = -two[:, 0][enccyc] + 90
-        # MAC uses 180 rotation to indicate reversal of modulation function, thus it
-        # is important which of vA or Vb is lower, as for TWO this would reverse
-        # the modulation function
-        th[two[enccyc, 2] > two[enccyc, 3]] = th[two[enccyc, 2] > two[enccyc, 3]] + 180
-
-        # scales
-        D = np.abs(two[enccyc, 2] - two[enccyc, 3]) / 2
-
-        # centres
-        thtsp = two[enccyc, 0] * 3.14159265 / 180
-        conline = np.mean(two[enccyc, 2:4], 1)
-
-        cx = conline * np.sin(thtsp)
-        cy = conline * np.cos(thtsp)
-
-        # reverse cycles
-        # these are cycles where the tagging of vessels is reversed, Tom does this
-        # by shifting the phase of the moudlation function. So this is NOT 180
-        # rotation in my convention, but a shift in the encoding centre
-        revcyc = two[enccyc, 1] > 2
-        cx[revcyc] = (conline[revcyc] + 2*D[revcyc]) * np.sin(thtsp[revcyc])
-        cy[revcyc] = (conline[revcyc] + 2*D[revcyc]) * np.cos(thtsp[revcyc])
-
-        mac = [cx, cy, th, D]
-        self.updating = True
-        try:
-            self.mac_mtx.setValues(mac)
-        finally:
-            self.updating = False
+        if not self.updating: 
+            try:
+                print("two changed")
+                from oxasl_ve import two_to_mac
+                self.updating = True
+                two = np.array(self.two_mtx.values())
+                print(two)
+                mac, self.imlist = two_to_mac(two)
+                print(mac, self.imlist)
+                self.mac_mtx.setValues(mac)
+            finally:
+                self.updating = False
 
     def _mac_changed(self):
         """ 
@@ -220,64 +147,18 @@ class EncodingWidget(QtGui.QWidget):
         It seems to assume that 'reverse cycles' occur in odd numbered images which 
         seems unreasonable, but I can't see an obvious way to detect this otherwise
         """
-        if self.updating: return
-        mac = np.array(self.mac_mtx.values())
-
-        imlist = np.array(self.imlist) + 1
-        for idx, imcode in enumerate(self.imlist):
-            if imcode > 0:
-                imlist[idx] = 2 + (imlist[idx] % 2)
-
-        th = np.zeros(len(imlist))
-        th_mac = np.zeros(len(imlist))
-        va = np.zeros(len(imlist))
-        vb = np.zeros(len(imlist))
-        cx = np.zeros(len(imlist))
-        cy = np.zeros(len(imlist))
-        d = np.zeros(len(imlist))
-    
-        cx[imlist > 1] = mac[0, :]
-        cy[imlist > 1] = mac[1, :]
-        d[imlist > 1] = mac[3, :]
-        th[imlist > 1] = mac[2, :]
-        th_mac[imlist > 1] = mac[2, :]
-
-        # Angles
-        #
-        # MAC uses 180 rotation to indicate reversal of modulation function, thus it
-        # is important which of vA or Vb is lower, as for TWO this would reverse
-        # the modulation function
-        # TWO measures angle from AP anti-clock, MAC from LR clock
-        rev_mod = th > 180
-        th[rev_mod] = th[rev_mod] - 180
-        th[imlist > 1] = -th[imlist > 1] + 90
-
-        # Scales and centres
-        for idx, itype in enumerate(imlist):
-            if itype > 1:
-                s = np.sin(th[idx] * 3.14159265 / 180)
-                c = np.cos(th[idx] * 3.14159265 / 180)
-                if np.abs(s) > np.abs(c):
-                    vb[idx] = cx[idx] / s + d[idx]
-                    va[idx] = cx[idx] / s - d[idx]
-                else:
-                    vb[idx] = cy[idx] / c + d[idx]
-                    va[idx] = cy[idx] / c - d[idx]
-
-            if itype == 3:
-                vb[idx] = vb[idx] - 2*d[idx]
-                va[idx] = va[idx] - 2*d[idx]
-        
-            if th_mac[idx] > 180:
-                va[idx], vb[idx] = vb[idx], va[idx]
-
-        two = np.column_stack((th, imlist, va, vb))
-        self.updating = True
-        try:
-            self.two_mtx.setValues(two)
-            self._update_imlist()
-        finally:
-            self.updating = False
+        if not self.updating: 
+            try:
+                print("mac changed")
+                from oxasl_ve import mac_to_two
+                self.updating = True
+                mac = np.array(self.mac_mtx.values())
+                print(mac)
+                two, self.imlist = mac_to_two(mac)
+                print(two, self.imlist)
+                self.two_mtx.setValues(two)
+            finally:
+                self.updating = False
 
 class PriorsWidget(QtGui.QWidget):
     """
