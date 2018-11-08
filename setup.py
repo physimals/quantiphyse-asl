@@ -1,11 +1,5 @@
 #!/usr/bin/env python
-import numpy
-import os
-import sys
-import shutil
-
 from setuptools import setup
-from setuptools.command.build_py import build_py
 
 desc = "Quantiphyse plugin for ASL"
 version = "0.0.1"
@@ -33,5 +27,5 @@ setup(name='qp-basil',
                    "Intended Audience :: Science/Research",
                    "Intended Audience :: End Users/Desktop",
                    "Topic :: Scientific/Engineering :: Bio-Informatics",],
-)
-
+     )
+     
