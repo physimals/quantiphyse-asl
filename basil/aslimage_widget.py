@@ -102,7 +102,7 @@ class AslMetadataView(object):
             return [1,]
         
         nvols = self.data.nvols
-        ntis = len(self.md.get("tis", [1.5]))
+        ntis = len(self.md.get("tis", self.md.get("plds", [1.5])))
         nrpts = float(nvols) / ntis
         ntc = self._get_num_label_vols()
         
@@ -134,7 +134,7 @@ class DataStructure(QtGui.QWidget, AslMetadataView):
     def _update(self):
         self.order = self.md.get("order", "lrt")
         self.num = {
-            "t" : len(self.md.get("tis", [1])),
+            "t" : len(self.md.get("tis", self.md.get("plds", [1]))),
             # This is for display purposes only so good enough for variable repeats
             "r" : self.md.get("nrpts", self._get_auto_repeats()[0]),
             "l" : self._get_num_label_vols()
@@ -614,6 +614,7 @@ class AslImageWidget(QtGui.QWidget, LogSource):
         grid.setColumnStretch(2, 0)
         grid.setRowStretch(len(view_classes)+2, 1)
         
+        self.grid = grid
         vbox.addLayout(grid)
         
         self.warn_label = WarningBox()
@@ -635,6 +636,12 @@ class AslImageWidget(QtGui.QWidget, LogSource):
         New data selected - load any previously defined metadata, and validate it 
         """
         self.data = self.ivm.data.get(self.data_combo.currentText(), None)
+        for idx in range(self.grid.count()):
+            if idx > 1:
+                w = self.grid.itemAt(idx).widget()
+                if w is not None:
+                    w.setEnabled(self.data is not None)
+
         if self.data is not None:
             self.md = self.data.metadata.get("AslData", dict(self.default_md))
             for view in self.views:
