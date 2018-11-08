@@ -183,10 +183,10 @@ class OxaslProcess(LogProcess):
         self.current_step = 0
         self.start_bg([self.data, options])
 
-    def finished(self):
+    def finished(self, worker_output):
         """ Called when process finishes """
         print("finished")
-        ret = self.worker_output[0]
+        ret = worker_output[0]
         print(ret)
         self.ivm.add(ret["native"]["perfusion"], name="perfusion")
         print("finished")
