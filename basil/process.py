@@ -22,8 +22,16 @@ in quantiphyse using the metadata extensions.
 
 Copyright (c) 2013-2018 University of Oxford
 """
+from __future__ import print_function
 
-from six import StringIO
+import sys
+import traceback
+import tempfile
+import shutil
+
+import six
+
+import numpy as np
 
 from quantiphyse.data import DataGrid, NumpyData, QpData
 from quantiphyse.utils import get_plugins, QpException
@@ -78,6 +86,11 @@ def qpdata_to_aslimage(qpd, options=None, metadata=None, grid=None):
     return aslimage, metadata
 
 def aslimage_to_metadata(aslimage):
+    """
+    Get metadata from an AslImage
+
+    :return: Metadata as a dictionary
+    """
     metadata = {}
     for opt in METADATA_ATTRS:
         if opt == "tis" and aslimage.have_plds:
@@ -103,7 +116,7 @@ def workspace_from_options(options, images, grid, ivm):
     Create an oxasl.Workspace object from process options 
     """
     from oxasl import Workspace
-    wsp = Workspace(log=StringIO(), **options)
+    wsp = Workspace(log=six.StringIO(), **options)
 
     for key in images:
         if key in options:
@@ -278,7 +291,6 @@ class BasilProcess(AslProcess):
         for key in options.keys():
             val = options[key]
             if isinstance(val, Image):
-                print("Setting %s=%s" % (key, val.name))
                 if key == "mask":
                     options["roi"] = val.name
                     options.pop(key)
@@ -362,7 +374,7 @@ class AslMultiphaseProcess(Script):
         options["yaml"] = template % template_params
         Script.run(self, options)
 
-    def finished(self):
+    def finished(self, worker_output):
         """ Called when process finishes """
         self.ivm.set_current_roi(self._orig_roi)
         self.ivm.set_current_data("mean_mag")
@@ -400,7 +412,7 @@ class AslCalibProcess(Process):
         options["calib_method"] = options.pop("method", None)
         output_name = options.pop("output-name", data.name + "_calib")
 
-        logbuf = StringIO()
+        logbuf = six.StringIO()
         wsp = Workspace(log=logbuf, **options)
         wsp.calib = calib_img
         ## FIXME variance mode
@@ -409,6 +421,12 @@ class AslCalibProcess(Process):
         self.ivm.add(name=output_name, data=calibrated.data, grid=data.grid, make_current=True)
 
 def wsp_to_dict(wsp):
+    """
+    Convert a workspace to a dictionary
+
+    Note that fsl.data.image.Image instances are
+    converted to QpData
+    """
     from fsl.data.image import Image
     from oxasl import Workspace, AslImage
     ret = dict(vars(wsp))
@@ -420,13 +438,20 @@ def wsp_to_dict(wsp):
             ret[key] = aslimage_to_qpdata(value)
         elif isinstance(value, Image):
             ret[key] = fslimage_to_qpdata(value)
+        elif isinstance(value, np.ndarray) or isinstance(value, six.string_types) or \
+             isinstance(value, list) or isinstance(value, dict):
+            ret[key] = value
         elif isinstance(value, Workspace):
             ret[key] = wsp_to_dict(value)
-    print("Workspace to dictionary: ")
-    print(ret)
     return ret
 
 def qp_oxasl(worker_id, queue, asldata, options):
+    """
+    Worker function for asynchronous oxasl run
+
+    Note that images are passed as QpData because it's pickleable
+    but need to be converted to fsl.data.image.Image
+    """
     try:
         from oxasl import Workspace
         from oxasl.oxford_asl import oxasl
@@ -436,7 +461,6 @@ def qp_oxasl(worker_id, queue, asldata, options):
                 options[key] = qpdata_to_fslimage(value)
         options["asldata"], _ = qpdata_to_aslimage(asldata)
 
-        print(options)
         output_monitor = OutputStreamMonitor(queue)
         wsp = Workspace(log=output_monitor, **options)
         oxasl(wsp)
@@ -444,7 +468,6 @@ def qp_oxasl(worker_id, queue, asldata, options):
         ret = wsp_to_dict(wsp)
         return worker_id, True, ret
     except:
-        import sys, traceback
         traceback.print_exc()
         return worker_id, False, sys.exc_info()[1]
 
@@ -454,16 +477,28 @@ class OxaslProcess(LogProcess):
     """
     PROCESS_NAME = "Oxasl"
 
+    IMAGE_OPTIONS = [
+        "struc", "calib", "cref", "cblip", "infer_mask",
+        "fmap", "fmapmag", "fmapmagbrain", "gm_roi", "noise_roi",
+    ]
+
     def __init__(self, ivm, **kwargs):
         LogProcess.__init__(self, ivm, worker_fn=qp_oxasl, **kwargs)
+        self._expected_output = {}
+        self._tempdir = None
 
     def run(self, options):
- 
+        """
+        Run oxasl pipeline asynchronously
+        """
         self.data = self.get_data(options)
-        options["mask"] = self.get_roi(options, self.data.grid)
-        # FIXME this is not really on...
+        if "mask" in options:
+            options["mask"] = self.get_roi(options, self.data.grid)
+
+        # FIXME this is not really on... We are assuming we know what 
+        # options are actually images
         for key in list(options.keys()):
-            if key in ("struc", "calib", "cref", "cblip"):
+            if key in self.IMAGE_OPTIONS:
                 if options[key]:
                     options[key] = self.ivm.data[options[key]]
                 else:
@@ -480,9 +515,54 @@ class OxaslProcess(LogProcess):
             #("BBR registration", "Final ASL->Structural registration"),
         ]
         self.current_step = 0
+        self._expected_output = options.pop("output", {})
+        self._tempdir = tempfile.mkdtemp("qp_oxasl")
+        options["savedir"] = self._tempdir
+        options["debug"] = True
         self.start_bg([self.data, options])
 
-    def finished(self):
-        """ Called when process finishes """
-        ret = self.worker_output[0]
-        self.ivm.add(ret["output"]["native"]["perfusion"], name="perfusion")
+    def finished(self, worker_output):
+        try:
+            ret = worker_output[0]
+            self.debug("OXASL finished - output:\n%s", ret["output"])
+            
+            # Load expected output
+            for name, path in self._expected_output.items():
+                item = self._get_return_item(ret, path)
+                if isinstance(item, QpData):
+                    self.ivm.add(item, name=name)
+                else:
+                    self.ivm.add_extra(name, item)
+
+            # Load 'default' output
+            self._load_default_output(ret["output"])
+        finally:
+            if self._tempdir:
+                shutil.rmtree(self._tempdir)
+                self.tempdir = None
+
+    def _get_return_item(self, ret, path):
+        self.debug("Looking for item: %s", path)
+        parts = path.split("/", 1)
+        item = ret.get(parts[0], None)
+        if len(parts) == 1:
+            self.debug("Found item:\n%s", item)
+            return item
+        elif item is not None:
+            self.debug("Going to next level")
+            return self._get_return_item(item, parts[1])
+        return None
+
+    def _load_default_output(self, output, suffix=""):
+        """ 
+        Recursively load output images into the IVM. 
+
+        TODO be more fine-grained about this?
+        """
+        for name, item in output.items():
+            if isinstance(item, QpData):
+                self.ivm.add(item, name=name + suffix)
+            elif isinstance(item, dict):
+                self._load_default_output(item, suffix + "_" + name)
+            else:
+                self.ivm.add_extra(name, item)
