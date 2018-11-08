@@ -45,10 +45,17 @@ def build_plugin(package_name, rootdir, distdir, platform):
     shutil.copy(LIB, packagedir)
 
     # Copy Python dependencies
-    aslmoddir = os.path.join(packagedir, "deps", "oxasl")
     import oxasl
+    aslmoddir = os.path.join(packagedir, "deps", "oxasl")
     aslmod_src = os.path.abspath(os.path.dirname(oxasl.__file__))
     shutil.copytree(aslmod_src, aslmoddir)
+    try:
+        import oxasl_ve
+        aslmoddir = os.path.join(packagedir, "deps", "oxasl_ve")
+        aslmod_src = os.path.abspath(os.path.dirname(oxasl_ve.__file__))
+        shutil.copytree(aslmod_src, aslmoddir)
+    except ImportError:
+        print("Not bundling OXASL_VE - not found")
 
 pkgdir = os.path.abspath(os.path.dirname(__file__))
 rootdir = os.path.abspath(os.path.join(pkgdir, os.pardir))
