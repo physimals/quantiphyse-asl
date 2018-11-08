@@ -48,6 +48,21 @@ class OxaslOptionWidget(QtGui.QWidget):
         """
         return self.optbox.values()
 
+    def output(self):
+        """
+        :return: Dictionary of output items specific to this widget. The keys should be valid
+                 quantiphyse names, and the values should be path-style identifiers in the output
+                 workspace, e.g. ``enable/qms`` or ``veasl/veslocs``. Images will be added to the IVM,
+                 other objects will be set as extras
+        """
+        return {}
+
+    def postrun(self):
+        """
+        Called after run finished in case widget wants to display some of the output
+        """
+        pass
+
 class StructuralData(OxaslOptionWidget):
     """
     OXASL processing options related to structural data
@@ -97,7 +112,7 @@ class CalibrationOptions(OxaslOptionWidget):
         self.refregion_opts = OptionBox("Reference region calibration")
         self.refregion_opts.add("Reference type", ChoiceOption(["CSF", "WM", "GM", "Custom"]), key="tissref")
         self.refregion_opts.option("tissref").sig_changed.connect(self._ref_tiss_changed)
-        self.refregion_opts.add("Reference ROI", DataOption(self.ivm, rois=True, data=False), key="ref_mask")
+        self.refregion_opts.add("Custom reference ROI", DataOption(self.ivm, rois=True, data=False), key="ref_mask", checked=True)
         # TODO pick specific region of ROI
         self.refregion_opts.add("Reference T1 (s)", NumericOption(minval=0, maxval=10, default=4.3, step=0.1), key="t1r")
         self.refregion_opts.add("Reference T2 (ms)", NumericOption(minval=0, maxval=2000, default=750, step=50), key="t2r")
@@ -147,7 +162,7 @@ class PreprocOptions(OxaslOptionWidget):
         self.optbox.add("Motion correction", BoolOption(default=True), key="mc")
         opt = self.optbox.add("Deblurring", BoolOption(), key="deblur")
         opt.sig_changed.connect(self._deblur_changed)
-        opt = self.optbox.add("ENABLE volume selection", BoolOption(), key="enable")
+        opt = self.optbox.add("ENABLE volume selection", BoolOption(), key="use_enable")
         opt.sig_changed.connect(self._enable_changed)
         self.optbox.add("Distortion correction", ChoiceOption(["Fieldmap", "Phase encoding reversed calibration"], ["fmap", "cblip"]), key="distcorr", checked=True)
         self.optbox.option("distcorr").sig_changed.connect(self._distcorr_changed)
@@ -170,7 +185,7 @@ class PreprocOptions(OxaslOptionWidget):
         self.sig_enable_tab.emit("deblur", self.optbox.option("deblur").value)
 
     def _enable_changed(self):
-        self.sig_enable_tab.emit("enable", self.optbox.option("enable").value)
+        self.sig_enable_tab.emit("enable", self.optbox.option("use_enable").value)
 
     def _distcorr_changed(self):
         enabled = self.optbox.option("distcorr").isEnabled()
@@ -213,13 +228,38 @@ class EnableOptions(OxaslOptionWidget):
 
     def _init_ui(self):
         self.optbox.add("Minimum number of repeats per time point", NumericOption(intonly=True, default=3, minval=1, maxval=20), key="min_nvols")
-        self.optbox.add("Grey matter ROI", DataOption(self.ivm, rois=True, data=False), checked=True, key="gm")
-        self.optbox.add("Noise ROI", DataOption(self.ivm, rois=True, data=False), checked=True, key="noise")
+        self.optbox.add("Custom grey matter ROI", DataOption(self.ivm, rois=True, data=False), checked=True, key="gm_roi")
+        self.optbox.add("Custom noise ROI", DataOption(self.ivm, rois=True, data=False), checked=True, key="noise_roi")
 
         self.vbox.addWidget(QtGui.QLabel("Quality measures"))
         self.qms_table = QtGui.QTableView()
         self.qms_table.setModel(self.qms_model)
         self.vbox.addWidget(self.qms_table)
+
+    def output(self):
+        output = {
+            "enable_results" : "enable/enable_results"
+        }
+        return output
+    
+    def postrun(self):
+        # Clear the results table and repopulate it if we have results from the run
+        self.qms_model.clear()
+        self.qms_model.setColumnCount(5)
+        self.qms_model.setHorizontalHeaderItem(0, QtGui.QStandardItem("TI"))
+        self.qms_model.setHorizontalHeaderItem(1, QtGui.QStandardItem("Repeat"))
+        self.qms_model.setHorizontalHeaderItem(2, QtGui.QStandardItem("CNR"))
+        self.qms_model.setHorizontalHeaderItem(3, QtGui.QStandardItem("Quality"))
+        self.qms_model.setHorizontalHeaderItem(4, QtGui.QStandardItem("Included"))
+
+        results = self.ivm.extras.get("enable_results", None)
+        if results is not None:
+            results = sorted(results, key=lambda k: (k['ti_idx'], k['rpt']))
+            self.qms_model.setRowCount(len(results))
+            for row, result in enumerate(results):
+                for col, meas in enumerate(("ti", "rpt", "cnr", "qual", "selected")):
+                    self.qms_model.setItem(row, col, QtGui.QStandardItem(str(result[meas])))
+        print("ENable results\n%s" % results)
 
 class DeblurOptions(OxaslOptionWidget):
     """
@@ -228,7 +268,7 @@ class DeblurOptions(OxaslOptionWidget):
 
     def _init_ui(self):
         pass
-        
+
 class VeaslOptions(OxaslOptionWidget):
     """
     OXASL processing options related to oxasl_deblur preprocessing
@@ -254,8 +294,6 @@ class VeaslOptions(OxaslOptionWidget):
         OxaslOptionWidget.__init__(self, ivm)
 
     def _init_ui(self):
-        self.optbox.add("Custom Inference ROI", DataOption(self.ivm, rois=True, data=False), checked=True, key="infer_mask")
-        
         nfpc = self.optbox.add("Sources per class", NumericOption(intonly=True, default=2, slider=False), key="nfpc")
         nfpc.sig_changed.connect(self._nfpc_changed)
 
@@ -272,13 +310,15 @@ class VeaslOptions(OxaslOptionWidget):
         self.optbox.add("Infer vessel locations on mean data", BoolOption(default=True), key="init_loc")
         inferv = self.optbox.add("Infer flow velocity", BoolOption(), key="infer_v")
         inferv.sig_changed.connect(self._inferv_changed)
+        self.optbox.add("Custom Inference ROI", DataOption(self.ivm, rois=True, data=False), checked=True, key="infer_mask")
+        
         self._method_changed()
 
         # Encoding setup
-        self.enc_mtx = EncodingWidget()
+        self.encoding = EncodingWidget()
 
         # Classes
-        self.class_mtx = ClasslistWidget()
+        self.classlist = ClasslistWidget()
 
         # Vessel locations
         self.vessels = VeslocsWidget()
@@ -287,18 +327,18 @@ class VeaslOptions(OxaslOptionWidget):
         # Priors
         self.priors = PriorsWidget()
 
-        self.vbox.addWidget(MultiExpander({"Encoding setup" : self.enc_mtx, 
-                                           "Class list" : self.class_mtx,
+        self.vbox.addWidget(MultiExpander({"Encoding setup" : self.encoding, 
+                                           "Class list" : self.classlist,
                                            "Vessels" : self.vessels,
                                            "Priors" : self.priors}))
 
-        self.vessels.vessels_initial.setValues(veslocs_default)
+        self.vessels.initial = veslocs_default
   
     def _data_changed(self):
         if self._data_widget.md["iaf"] == "ve":
             data = self._data_widget.data
             if data is not None:
-                self.enc_mtx.set_nenc(self._data_widget.md.get("nenc", 8))
+                self.encoding.nenc = self._data_widget.md.get("nenc", 8)
 
     def _method_changed(self):
         mcmc = self.optbox.option("method").value == "MCMC"
@@ -306,11 +346,11 @@ class VeaslOptions(OxaslOptionWidget):
             self.optbox.set_visible(opt, mcmc)
 
     def _nfpc_changed(self):
-        self.class_mtx.update(len(self.vessels.vessels_initial.values()[0]), self.optbox.option("nfpc").value)
+        self.classlist.generate_classes(len(self.vessels.initial[0]), self.optbox.option("nfpc").value)
 
     def _vessels_changed(self):
-        self.class_mtx.update(len(self.vessels.vessels_initial.values()[0]), self.optbox.option("nfpc").value)
-        self.enc_mtx.set_veslocs(self.vessels.vessels_initial.values())
+        self.classlist.generate_classes(len(self.vessels.initial[0]), self.optbox.option("nfpc").value)
+        self.encoding.veslocs = self.vessels.initial
 
     def _inferloc_changed(self):
         val = self.optbox.values()["infer_loc"]
@@ -323,13 +363,37 @@ class VeaslOptions(OxaslOptionWidget):
     def options(self):
         options = self.optbox.values()
         options.update(self.priors.options())
-        options["veslocs"] = np.array(self.vessels.vessels_initial.values())
-        options["encdef"] = np.array(self.enc_mtx.mac_mtx.values())
-        options["imlist"] = np.array(self.enc_mtx.imlist)
+        options["veslocs"] = self.vessels.initial
+        options["encdef"] = self.encoding.mac
+        options["imlist"] = self.encoding.imlist
         if self.optbox.option("method").value != "MCMC":
             for opt in self.mcmc_options:
                 options.pop(opt, None)
         return options
+
+    def output(self):
+        output = {}
+        if self._data_widget.data is not None:
+            plds = self._data_widget.md.get("plds", self._data_widget.md.get("tis", []))
+            for idx in range(1, len(plds)+1):
+                output["veasl_veslocs_pld%i" % idx] = "veasl/pld%i/veslocs" % idx
+                output["veasl_pis_pld%i" % idx] = "veasl/pld%i/pis" % idx
+        return output
+
+    def postrun(self):
+        if self._data_widget.data is not None:
+            veslocs, pis = [], []
+            plds = self._data_widget.md.get("plds", self._data_widget.md.get("tis", []))
+            for idx in range(1, len(plds)+1):
+                veslocs.append(self.ivm.extras.get("veasl_veslocs_pld%i" % idx, None))
+                pis.append(self.ivm.extras.get("veasl_pis_pld%i" % idx, None))
+
+            print(veslocs)
+            print(pis)
+            #if None not in veslocs:
+            self.vessels.inferred = veslocs[0]
+            #if None not in pis:
+            self.classlist.inferred_pis = np.array(pis).T
 
 class AnalysisOptions(OxaslOptionWidget):
     """
@@ -399,6 +463,7 @@ class OxaslWidget(QpWidget):
         self.tabs.addTab(self.analysis, "Analysis Options")
 
         runbox = RunBox(ivm=self.ivm, widget=self, title="Run processing", save_option=True)
+        runbox.sig_postrun.connect(self._postrun)
         vbox.addWidget(runbox)
         vbox.addStretch(1)
 
@@ -411,22 +476,40 @@ class OxaslWidget(QpWidget):
         if enable:
             self.tabs.insertTab(self.tabs.indexOf(self.preproc)+1, widget, name.title())
 
+    def _enabled_tabs(self):
+        tabs = [self.preproc, self.structural, self.calibration, self.analysis]
+        for tab in self._optional_tabs.values():
+            if self.tabs.indexOf(tab) >= 0:
+                tabs.append(tab)
+        return tabs
+
     def _options(self):
         options = self.asldata.get_options()
-        options.update(self.preproc.options())
-        options.update(self.structural.options())
-        options.update(self.calibration.options())
-        options.update(self.analysis.options())
-       
-        for widget in self._optional_tabs.values():
-            if self.tabs.indexOf(widget) >= 0:
-                options.update(widget.options())
+        output = {}
+
+        tabs = self._enabled_tabs()
+        for tab in tabs:
+            options.update(tab.options())
+            output.update(tab.output())
 
         self.debug("oxasl options:")
-        for item in options.items():
+        for key, value in options.items():
+            self.debug("%s (%s): %s" % (key, type(value), value))
+
+        self.debug("oxasl output:")
+        for item in output.items():
             self.debug("%s: %s" % item)
         
+        options["output"] = output
         return options
+
+    def _postrun(self):
+        """
+        Called after run has finished - some widgets like to display some of the outputs
+        """
+        tabs = self._enabled_tabs()
+        for tab in tabs:
+            tab.postrun()
 
     def processes(self):
         """ 
