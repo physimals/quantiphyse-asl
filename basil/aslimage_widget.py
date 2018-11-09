@@ -39,7 +39,7 @@ Default metadata which should work for any data file
 """
 DEFAULT_METADATA = {
     "iaf" : "diff",
-    "order" : "rt", 
+    "order" : "tr", 
     "tis" : [1.5,], 
     "taus" : [1.4,], 
     "casl" : True
@@ -643,7 +643,13 @@ class AslImageWidget(QtGui.QWidget, LogSource):
                     w.setEnabled(self.data is not None)
 
         if self.data is not None:
-            self.md = self.data.metadata.get("AslData", dict(self.default_md))
+            self.md = self.data.metadata.get("AslData", None)
+            if self.md is None:
+                self.md = dict(self.default_md)
+                if self.data.nvols % 2 == 0:
+                    # Even number of volumes - guess TC pairs
+                    self.md["iaf"] = "tc"
+                    self.md["order"] = "ltr"
             for view in self.views:
                 view.set_data(self.data, self.md)
             self._validate_metadata()
