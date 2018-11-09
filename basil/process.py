@@ -248,7 +248,7 @@ class BasilProcess(AslProcess):
         wsp.mask = qpdata_to_fslimage(roi)
 
         self.steps = basil.basil_steps(wsp, self.asldata)
-        self.log = wsp.log.getvalue()
+        self.log(wsp.log.getvalue())
         self.step_num = 0
         self.status = Process.RUNNING
         self._next_step()
@@ -272,13 +272,13 @@ class BasilProcess(AslProcess):
             self._start_fabber(step)
         else:
             self.debug("Basil: All steps complete")
-            self.log += "COMPLETE\n"
+            self.log("COMPLETE\n")
             self.status = Process.SUCCEEDED
             self.steps = []
             self.step_num = 0
             if "finalMVN" in self.ivm.data:
                 self.ivm.delete("finalMVN")
-            self.sig_finished.emit(self.status, self.log, self.exception)
+            self.sig_finished.emit(self.status, self.get_log(), self.exception)
             self.ivm.set_current_data("perfusion")
 
     #def fabber(options, output=LOAD, ref_nii=None, progress=None, **kwargs):
@@ -316,22 +316,22 @@ class BasilProcess(AslProcess):
         for k in sorted(options.keys()):
             self.debug("%s=%s (%s)" % (k, str(options[k]), type(options[k])))
 
-        self.log += step.desc + "\n\n"
+        self.log(step.desc + "\n\n")
         self.fabber.execute(options)
 
     def _fabber_finished(self, status, log, exception):
         if self.status != self.RUNNING:
             return
 
-        self.log += log + "\n\n"
+        self.log(log + "\n\n")
         if status == Process.SUCCEEDED:
             self.debug("Basil: completed step %i" % self.step_num)
             self._next_step()
         else:
             self.debug("Basil: Fabber failed on step %i" % self.step_num)
-            self.log += "CANCELLED\n"
+            self.log("CANCELLED\n")
             self.status = status
-            self.sig_finished.emit(self.status, self.log, exception)
+            self.sig_finished.emit(self.status, self.get_log(), exception)
             
     def _fabber_progress(self, complete):
         self.debug("Basil: Fabber progress: %f", complete)
@@ -374,7 +374,7 @@ class AslMultiphaseProcess(Script):
         options["yaml"] = template % template_params
         Script.run(self, options)
 
-    def finished(self, worker_output):
+    def finished(self, _):
         """ Called when process finishes """
         self.ivm.set_current_roi(self._orig_roi)
         self.ivm.set_current_data("mean_mag")
@@ -417,7 +417,7 @@ class AslCalibProcess(Process):
         wsp.calib = calib_img
         ## FIXME variance mode
         calibrated = calib.calibrate(wsp, img)
-        self.log = logbuf.getvalue()
+        self.log(logbuf.getvalue())
         self.ivm.add(name=output_name, data=calibrated.data, grid=data.grid, make_current=True)
 
 def wsp_to_dict(wsp):
@@ -480,6 +480,7 @@ class OxaslProcess(LogProcess):
     IMAGE_OPTIONS = [
         "struc", "calib", "cref", "cblip", "infer_mask",
         "fmap", "fmapmag", "fmapmagbrain", "gm_roi", "noise_roi",
+        "wmseg", "gmseg", "csfseg",
     ]
 
     def __init__(self, ivm, **kwargs):
@@ -487,24 +488,46 @@ class OxaslProcess(LogProcess):
         self._expected_output = {}
         self._tempdir = None
 
+    def _get_asldata(self, options):
+        data = self.get_data(options)
+        asldata, md = qpdata_to_aslimage(data, options)
+        data.metadata["AslData"] = md
+        return data
+
     def run(self, options):
         """
         Run oxasl pipeline asynchronously
         """
-        self.data = self.get_data(options)
-        if "mask" in options:
-            options["mask"] = self.get_roi(options, self.data.grid)
+        self.data = self._get_asldata(options)
 
-        # FIXME this is not really on... We are assuming we know what 
-        # options are actually images
+        # Create a temporary directory to store working data - this makes it
+        # easy to retrieve afterwards and reduces memory usage. Note that
+        # this is deleted in the `finished` method which is guaranteed to
+        # be called.
+        self._tempdir = tempfile.mkdtemp("qp_oxasl")
+
+        oxasl_options = {
+            "output" : {},
+            "debug" : True,
+            "savedir" : self._tempdir
+        }
+        if "mask" in options:
+            oxasl_options["mask"] = self.get_roi(options, self.data.grid)
+
+        # FIXME this is not great... We are assuming we know what 
+        # options are actually images. Could the widgets themselves tell us?
         for key in list(options.keys()):
             if key in self.IMAGE_OPTIONS:
-                if options[key]:
-                    options[key] = self.ivm.data[options[key]]
-                else:
-                    options.pop(key)
-            elif options[key] is None:
-                options.pop(key)
+                data_name = options.pop(key)
+                if data_name:
+                    oxasl_options[key] = self.ivm.data[data_name]
+
+        # Copy all other options are remove them from the dictionary
+        # to avoid any warnings about unused options
+        for key in list(options.keys()):
+            value = options.pop(key)
+            if value is not None:
+                oxasl_options[key] = value
                 
         self.expected_steps = [
             ("Pre-processing", "Pre-processing"),
@@ -515,11 +538,7 @@ class OxaslProcess(LogProcess):
             #("BBR registration", "Final ASL->Structural registration"),
         ]
         self.current_step = 0
-        self._expected_output = options.pop("output", {})
-        self._tempdir = tempfile.mkdtemp("qp_oxasl")
-        options["savedir"] = self._tempdir
-        options["debug"] = True
-        self.start_bg([self.data, options])
+        self.start_bg([self.data, oxasl_options])
 
     def finished(self, worker_output):
         try:
