@@ -109,18 +109,13 @@ class EncodingWidget(QtGui.QWidget):
     def _autogen(self):
         if self.veslocs is not None and self.auto_combo.currentIndex() == 0:
             try:
-                print("autogenerating encoding matrix")
                 nenc = self._nenc
                 if nenc == 0:
                     # Default if data is not loaded
                     nenc = 8
-                print(self.veslocs, nenc)
 
                 from oxasl_ve import veslocs_to_enc
-                print("imported")
                 two = veslocs_to_enc(self.veslocs[:2, :], nenc)
-                print("ran")
-                print(two)
                 self.two_mtx.setValues(two)
                 self._warn("")
             except ValueError as exc:
@@ -128,7 +123,6 @@ class EncodingWidget(QtGui.QWidget):
             except Exception as exc:
                 print(exc)
             except:
-                print("unexpected")
                 import traceback
                 traceback.print_exc()
         
@@ -138,13 +132,10 @@ class EncodingWidget(QtGui.QWidget):
         """
         if not self._updating: 
             try:
-                print("two changed")
                 from oxasl_ve import two_to_mac
                 self._updating = True
                 two = np.array(self.two_mtx.values())
-                print(two)
                 mac, self.imlist = two_to_mac(two)
-                print(mac, self.imlist)
                 self.mac_mtx.setValues(mac)
             finally:
                 self._updating = False
@@ -159,13 +150,10 @@ class EncodingWidget(QtGui.QWidget):
         """
         if not self._updating: 
             try:
-                print("mac changed")
                 from oxasl_ve import mac_to_two
                 self._updating = True
                 mac = np.array(self.mac_mtx.values())
-                print(mac)
                 two, self.imlist = mac_to_two(mac)
-                print(two, self.imlist)
                 self.two_mtx.setValues(two)
             finally:
                 self._updating = False
@@ -253,7 +241,6 @@ class VeslocsWidget(QtGui.QWidget):
     def _initial_vessels_changed(self):
         try:
             vessel_data = self.vessels_initial.values()
-            print("Initial vessels: ", vessel_data)
             self.vessels_inferred.setValues(vessel_data, validate=False, row_headers=["X", "Y"])
             self._update_vessel_plot()
             self.sig_initial_changed.emit(vessel_data)
@@ -261,7 +248,6 @@ class VeslocsWidget(QtGui.QWidget):
             traceback.print_exc() # FIXME need to handle ValueError
 
     def _inferred_vessels_changed(self):
-        print("Inferred vessels: ")
         self._update_vessel_plot()
 
     def _update_vessel_plot(self):
@@ -311,17 +297,13 @@ class ClasslistWidget(NumberGrid):
         self._update(classes, pis)
     
     def _update(self, classes, inferred_pis=None):
-        print("Update:")
         if inferred_pis is None:
             inferred_pis = [[],] * len(classes)
             num_plds = 0
         else:
             num_plds = len(inferred_pis[0])
 
-        print(classes)
-        print(inferred_pis)
         new_values = [c + [1/float(len(classes)),] + list(pi) for c, pi in zip(classes, inferred_pis)]
-        print(new_values)
         row_headers = ["Class %i" % (i+1) for i in range(len(classes))]
         col_headers = ["Vessel %i" % (i+1) for i in range(len(classes[0]))] + \
                       ["Initial Proportions",] + \
