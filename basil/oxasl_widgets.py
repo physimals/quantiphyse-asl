@@ -11,8 +11,7 @@ import numpy as np
 from PySide import QtGui, QtCore
 
 from quantiphyse.gui.options import OptionBox, ChoiceOption, NumericOption, BoolOption, DataOption, FileOption
-from quantiphyse.gui.widgets import QpWidget, TitleWidget, Citation, RunBox, MultiExpander
-from quantiphyse.utils import QpException
+from quantiphyse.gui.widgets import QpWidget, TitleWidget, Citation, RunWidget, MultiExpander
 
 from .aslimage_widget import AslImageWidget
 from .veasl_widgets import VeslocsWidget, EncodingWidget, PriorsWidget, ClasslistWidget, veslocs_default
@@ -259,7 +258,6 @@ class EnableOptions(OxaslOptionWidget):
             for row, result in enumerate(results):
                 for col, meas in enumerate(("ti", "rpt", "cnr", "qual", "selected")):
                     self.qms_model.setItem(row, col, QtGui.QStandardItem(str(result[meas])))
-        print("ENable results\n%s" % results)
 
 class DeblurOptions(OxaslOptionWidget):
     """
@@ -274,14 +272,14 @@ class VeaslOptions(OxaslOptionWidget):
     OXASL processing options related to oxasl_deblur preprocessing
     """
 
-    CITE = (
+    # FIXME this is not used at present
+    CITE_OLD = (
         "A Fast Analysis Method for Non Invasive Imaging of Blood Flow in Individual Cerebral Arteries Using Vessel Encoded Arterial Spin Labelling Angiography.",
         "Chappell MA, Okell TW, Payne SJ, Jezzard P, Woolrich MW.",
         "Medical Image Analysis 16.4 (2012) 831-839",
     )
 
-    # FIXME this is not used at present
-    cite_multipld = (
+    CITE = (
         "Cerebral blood flow quantification using vessel-encoded arterial spin labelling",
         "Thomas W Okell, Michael A Chappell, Michael E Kelly, Peter Jezzard",
         "Journal of Cerebral Blood Flow and Metabolism (2013) 22, 1716-1724",
@@ -388,8 +386,6 @@ class VeaslOptions(OxaslOptionWidget):
                 veslocs.append(self.ivm.extras.get("veasl_veslocs_pld%i" % idx, None))
                 pis.append(self.ivm.extras.get("veasl_pis_pld%i" % idx, None))
 
-            print(veslocs)
-            print(pis)
             #if None not in veslocs:
             self.vessels.inferred = veslocs[0]
             #if None not in pis:
@@ -462,7 +458,7 @@ class OxaslWidget(QpWidget):
         self.analysis = AnalysisOptions()
         self.tabs.addTab(self.analysis, "Analysis Options")
 
-        runbox = RunBox(ivm=self.ivm, widget=self, title="Run processing", save_option=True)
+        runbox = RunWidget(self, title="Run processing", save_option=True)
         runbox.sig_postrun.connect(self._postrun)
         vbox.addWidget(runbox)
         vbox.addStretch(1)
