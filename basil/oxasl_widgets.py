@@ -166,7 +166,7 @@ class PreprocOptions(OxaslOptionWidget):
         self.optbox.add("Distortion correction", ChoiceOption(["Fieldmap", "Phase encoding reversed calibration"], ["fmap", "cblip"]), key="distcorr", checked=True)
         self.optbox.option("distcorr").sig_changed.connect(self._distcorr_changed)
         self.optbox.add("Phase encode direction", ChoiceOption(["x", "y", "z", "-x", "-y", "-z"]), key="pedir")
-        self.optbox.add("Echo spacing", NumericOption(minval=0, maxval=1, step=0.01), key="echospacing")
+        self.optbox.add("Echo spacing (ms)", NumericOption(minval=0, maxval=1, step=0.01), key="echospacing")
 
         self.fmap_opts = OptionBox("Fieldmap distortion correction")
         self.fmap_opts.add("Fieldmap image (rads)", DataOption(self.ivm, include_4d=False), key="fmap")
@@ -196,7 +196,15 @@ class PreprocOptions(OxaslOptionWidget):
 
     def options(self):
         """ :return: Options as dictionary """
-        return self.optbox.values()
+        opts = self.optbox.values()
+        
+        if "echospacing" in opts:
+            # Echo spacing needs to be passed in seconds
+            opts["echospacing"] = opts["echospacing"] / 1000
+
+        if opts.pop("distcorr", None) == "fmap":
+            opts.update(self.fmap_opts.values())
+        return opts
 
 class DistcorrOptions(OxaslOptionWidget):
     """
@@ -408,7 +416,7 @@ class AnalysisOptions(OxaslOptionWidget):
         self.optbox.add("Fix label duration", BoolOption(default=False, invert=True), key="infertau")
         self.optbox.add("Fix arterial transit time", BoolOption(default=True, invert=True), key="inferbat")
         self.optbox.add("T1 value uncertainty", BoolOption(default=False), key="infert1")
-        self.optbox.add("Macro vascular component", BoolOption(default=False), key="inferart")
+        self.optbox.add("Macro vascular component", BoolOption(default=True), key="inferart")
         self.optbox.add("Partial volume correction", BoolOption(default=False), key="pvcorr")
         
     def _wp_changed(self):
