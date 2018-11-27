@@ -300,6 +300,7 @@ class OxaslWidgetTest(WidgetTest):
 
     def _options_match(self, options, expected):
         for item in set(list(options.keys()) + list(expected.keys())):
+            #print(item, options.get(item, None), expected.get(item, None))
             self.assertTrue(item in options)
             self.assertTrue(item in expected)
             self.assertEqual(options[item], expected[item])
@@ -327,7 +328,7 @@ class OxaslWidgetTest(WidgetTest):
     def _analysis(self, **kwargs):
         ret = {
             "infertau" : False,
-            "inferart" : False,
+            "inferart" : True,
             "inferbat" : True,
             "infert1" : False,
             "pvcorr" : False,
