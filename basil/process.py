@@ -28,13 +28,16 @@ import sys
 import traceback
 import tempfile
 import shutil
+import os
+import glob
 
 import six
 
 import numpy as np
 
-from quantiphyse.data import DataGrid, NumpyData, QpData
-from quantiphyse.utils import get_plugins, QpException
+from quantiphyse.data import DataGrid, NumpyData, QpData, load
+from quantiphyse.data.extras import MatrixExtra
+from quantiphyse.utils import get_plugins, QpException, load_matrix
 from quantiphyse.utils.batch import Script
 from quantiphyse.processes import Process
 from quantiphyse.utils.cmdline import OutputStreamMonitor, LogProcess
@@ -544,44 +547,55 @@ class OxaslProcess(LogProcess):
         try:
             ret = worker_output[0]
             self.debug("OXASL finished - output:\n%s", ret["output"])
-            
+            self.debug("Expected output: %s", self._expected_output)
+
             # Load expected output
             for name, path in self._expected_output.items():
-                item = self._get_return_item(ret, path)
+                item = self._get_return_item(self._tempdir, path)
                 if isinstance(item, QpData):
                     self.ivm.add(item, name=name)
                 else:
                     self.ivm.add_extra(name, item)
 
             # Load 'default' output
-            self._load_default_output(ret["output"])
+            self._load_default_output(os.path.join(self._tempdir, "output"))
         finally:
             if self._tempdir:
                 shutil.rmtree(self._tempdir)
                 self.tempdir = None
 
-    def _get_return_item(self, ret, path):
+    def _get_return_item(self, outdir, path):
         self.debug("Looking for item: %s", path)
-        parts = path.split("/", 1)
-        item = ret.get(parts[0], None)
-        if len(parts) == 1:
-            self.debug("Found item:\n%s", item)
-            return item
-        elif item is not None:
-            self.debug("Going to next level")
-            return self._get_return_item(item, parts[1])
-        return None
+        matches = glob.glob(os.path.join(outdir, path, ".*"))
+        for match in matches:
+            try:
+                return load(match)
+            except:
+                # FIXME try loading matrices and fall back to 'stuff'
+                self.warn("Failed to load: %s", path)
 
-    def _load_default_output(self, output, suffix=""):
+    def _load_default_output(self, outdir, suffix=""):
         """ 
         Recursively load output images into the IVM. 
 
         TODO be more fine-grained about this?
         """
-        for name, item in output.items():
-            if isinstance(item, QpData):
-                self.ivm.add(item, name=name + suffix)
-            elif isinstance(item, dict):
-                self._load_default_output(item, suffix + "_" + name)
-            else:
-                self.ivm.add_extra(name, item)
+        self.debug("output from: %s", outdir)
+        files = glob.glob(os.path.join(outdir, "*"))
+        for fname in files:
+            self.debug("found %s", fname)
+            name = os.path.basename(fname).split(".", 1)[0]
+            if os.path.isdir(fname):
+                self._load_default_output(fname, suffix + "_" + name)
+
+            # FIXME yuk
+            try:
+                qpdata = load(fname)
+                self.ivm.add(qpdata, name=name + suffix)
+            except:
+                try:
+                    mat = load_matrix(fname)
+                    extra = MatrixExtra(name+suffix, mat)
+                    self.ivm.add_extra(extra, name=name + suffix)
+                except:
+                    self.warn("Failed to load: %s", fname)
