@@ -665,8 +665,7 @@ class AslImageWidget(QtGui.QWidget, LogSource):
         self.debug("New metadata: %s", sender.md)
         self.md = sender.md
         self._validate_metadata()
-        if self.valid:
-            self._save_metadata()
+        self._save_metadata()
         self.sig_changed.emit()
 
     def _save_metadata(self):
