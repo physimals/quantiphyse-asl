@@ -31,7 +31,7 @@ class AslPreprocWidget(QpWidget):
     Widget which lets you do basic preprocessing on ASL data
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL Preprocess", icon="asl.png", group="ASL", desc="Basic preprocessing on ASL data", **kwargs)
+        QpWidget.__init__(self, name="ASL Preprocess", icon="asl.png", group="ASL", desc="Basic preprocessing on ASL data", version=__version__, **kwargs)
         self.process = AslPreprocProcess(self.ivm)
         self.output_name_edited = False
 
@@ -39,7 +39,7 @@ class AslPreprocWidget(QpWidget):
         vbox = QtGui.QVBoxLayout()
         self.setLayout(vbox)
 
-        title = TitleWidget(self, help="asl", subtitle="Basic preprocessing of ASL data %s" % __version__)
+        title = TitleWidget(self, help="asl", subtitle="Basic preprocessing of ASL data")
         vbox.addWidget(title)
               
         self.aslimage_widget = AslImageWidget(self.ivm, parent=self)
@@ -138,7 +138,7 @@ class AslBasilWidget(QpWidget):
     Widget to do model fitting on ASL data
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL Model fitting", icon="asl.png", group="ASL", desc="Bayesian model fitting on ASL data", **kwargs)
+        QpWidget.__init__(self, name="ASL Model fitting", icon="asl.png", group="ASL", desc="Bayesian model fitting on ASL data", version=__version__, **kwargs)
         
     def init_ui(self):
         vbox = QtGui.QVBoxLayout()
@@ -151,7 +151,7 @@ class AslBasilWidget(QpWidget):
             vbox.addWidget(QtGui.QLabel(str(e)))
             return
         
-        title = TitleWidget(self, help="asl", subtitle="Bayesian Modelling for Arterial Spin Labelling MRI %s" % __version__)
+        title = TitleWidget(self, help="asl", subtitle="Bayesian Modelling for Arterial Spin Labelling MRI")
         vbox.addWidget(title)
               
         cite = Citation(FAB_CITE_TITLE, FAB_CITE_AUTHOR, FAB_CITE_JOURNAL)
@@ -237,13 +237,13 @@ class AslCalibWidget(QpWidget):
     Widget to do calibration on ASL data
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL Calibration", icon="asl.png", group="ASL", desc="Calibration of fitted ASL data", **kwargs)
+        QpWidget.__init__(self, name="ASL Calibration", icon="asl.png", group="ASL", desc="Calibration of fitted ASL data", version=__version__, **kwargs)
         
     def init_ui(self):
         vbox = QtGui.QVBoxLayout()
         self.setLayout(vbox)
         
-        title = TitleWidget(self, help="asl", subtitle="ASL calibration v%s" % __version__)
+        title = TitleWidget(self, help="asl", subtitle="ASL calibration")
         vbox.addWidget(title)
               
         self.data_box = QtGui.QGroupBox("Data to calibrate")
@@ -368,7 +368,7 @@ class AslMultiphaseWidget(QpWidget):
     Widget to do multiphase model fitting on ASL data
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="Multiphase ASL", icon="asl.png", group="ASL", desc="Bayesian Modelling for Multiphase Arterial Spin Labelling MRI", **kwargs)
+        QpWidget.__init__(self, name="Multiphase ASL", icon="asl.png", group="ASL", desc="Bayesian Modelling for Multiphase Arterial Spin Labelling MRI", version=__version__, **kwargs)
         
     def init_ui(self):
         vbox = QtGui.QVBoxLayout()
@@ -381,7 +381,7 @@ class AslMultiphaseWidget(QpWidget):
             vbox.addWidget(QtGui.QLabel(str(e)))
             return
         
-        title = TitleWidget(self, help="asl", subtitle="Bayesian pre-processing for Multiphase Arterial Spin Labelling MRI %s" % __version__)
+        title = TitleWidget(self, help="asl", subtitle="Bayesian pre-processing for Multiphase Arterial Spin Labelling MRI")
         vbox.addWidget(title)
               
         cite = Citation(FAB_CITE_TITLE, FAB_CITE_AUTHOR, FAB_CITE_JOURNAL)

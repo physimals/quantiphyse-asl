@@ -427,13 +427,13 @@ class OxaslWidget(QpWidget):
     Widget to do ASL data processing
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL data processing", icon="asl.png", group="ASL", desc="Complete data processing for ASL data", **kwargs)
+        QpWidget.__init__(self, name="ASL data processing", icon="asl.png", group="ASL", desc="Complete data processing for ASL data", version=__version__, **kwargs)
         
     def init_ui(self):
         vbox = QtGui.QVBoxLayout()
         self.setLayout(vbox)
         
-        title = TitleWidget(self, help="asl", subtitle="Data processing for Arterial Spin Labelling MRI %s" % __version__)
+        title = TitleWidget(self, help="asl", subtitle="Data processing for Arterial Spin Labelling MRI")
         vbox.addWidget(title)
               
         cite = Citation(FAB_CITE_TITLE, FAB_CITE_AUTHOR, FAB_CITE_JOURNAL)
