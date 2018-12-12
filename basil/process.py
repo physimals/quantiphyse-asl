@@ -483,7 +483,7 @@ class OxaslProcess(LogProcess):
     IMAGE_OPTIONS = [
         "struc", "calib", "cref", "cblip", "infer_mask",
         "fmap", "fmapmag", "fmapmagbrain", "gm_roi", "noise_roi",
-        "wmseg", "gmseg", "csfseg",
+        "wmseg", "gmseg", "csfseg", "refmask"
     ]
 
     def __init__(self, ivm, **kwargs):
@@ -508,11 +508,13 @@ class OxaslProcess(LogProcess):
         # this is deleted in the `finished` method which is guaranteed to
         # be called.
         self._tempdir = tempfile.mkdtemp("qp_oxasl")
+        self._reportdir = options.pop("report", None)
 
         oxasl_options = {
             "output" : {},
             "debug" : True,
-            "savedir" : self._tempdir
+            "savedir" : self._tempdir,
+            "save_report" : self._reportdir is not None,
         }
         if "mask" in options:
             oxasl_options["mask"] = self.get_roi(options, self.data.grid)
@@ -559,6 +561,20 @@ class OxaslProcess(LogProcess):
 
             # Load 'default' output
             self._load_default_output(os.path.join(self._tempdir, "output"))
+
+            # Copy report and open if required
+            if self._reportdir:
+                output_dir = os.path.abspath(os.path.join(self._reportdir, "oxasl_report"))
+                if os.path.exists(output_dir):
+                    if os.path.isdir(output_dir):
+                        shutil.rmtree(output_dir)
+                    else:
+                        os.remove(output_dir)
+                shutil.copytree(os.path.join(self._tempdir, "report"), output_dir)
+                indexurl = "file://" + os.path.join(output_dir, "index.html")
+
+                import webbrowser
+                webbrowser.open(indexurl, new=0, autoraise=True)
         finally:
             if self._tempdir:
                 shutil.rmtree(self._tempdir)
@@ -591,7 +607,10 @@ class OxaslProcess(LogProcess):
             # FIXME yuk
             try:
                 qpdata = load(fname)
-                self.ivm.add(qpdata, name=name + suffix)
+                # Remember this is from a temporary file
+                # FIXME which outputs are ROIs?
+                qpdata = NumpyData(qpdata.raw(), grid=qpdata.grid, name=name + suffix)
+                self.ivm.add(qpdata)
             except:
                 try:
                     mat = load_matrix(fname)
