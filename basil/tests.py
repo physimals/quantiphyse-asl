@@ -300,7 +300,7 @@ class OxaslWidgetTest(WidgetTest):
 
     def _options_match(self, options, expected):
         for item in set(list(options.keys()) + list(expected.keys())):
-            #print(item, options.get(item, None), expected.get(item, None))
+            #print(item, options.get(item, "MISSING"), expected.get(item, "MISSING"))
             self.assertTrue(item in options)
             self.assertTrue(item in expected)
             self.assertEqual(options[item], expected[item])
@@ -337,6 +337,12 @@ class OxaslWidgetTest(WidgetTest):
             "t1" : 1.3,
             "bat" : 1.3,
             "wp" : False,
+            "save-reg" : False,
+            "save-calib" : False,
+            "save-struc" : False,
+            "save-native" : True,
+            "save-mask" : True,
+            "save-std" : False,
         }
         ret.update(kwargs)
         return ret
