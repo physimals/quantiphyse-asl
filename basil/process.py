@@ -33,8 +33,6 @@ import glob
 
 import six
 
-import numpy as np
-
 from quantiphyse.data import DataGrid, NumpyData, QpData, load
 from quantiphyse.data.extras import MatrixExtra
 from quantiphyse.utils import get_plugins, QpException, load_matrix
@@ -429,23 +427,27 @@ def wsp_to_dict(wsp):
 
     Note that fsl.data.image.Image instances are
     converted to QpData
+
+    FIXME do we need this? Removed so we can just
+    get stuff from the temp dir
     """
-    from fsl.data.image import Image
-    from oxasl import Workspace, AslImage
-    ret = dict(vars(wsp))
-    for key in ret.keys():
-        value = ret[key] 
-        if key in ("log", "fsllog", "report") or key[0] == "_":
-            ret.pop(key)
-        elif isinstance(value, AslImage):
-            ret[key] = aslimage_to_qpdata(value)
-        elif isinstance(value, Image):
-            ret[key] = fslimage_to_qpdata(value)
-        elif isinstance(value, np.ndarray) or isinstance(value, six.string_types) or \
-             isinstance(value, list) or isinstance(value, dict):
-            ret[key] = value
-        elif isinstance(value, Workspace):
-            ret[key] = wsp_to_dict(value)
+    #from fsl.data.image import Image
+    #from oxasl import Workspace, AslImage
+    ret = {}
+    #ret = dict(vars(wsp))
+    #for key in list(ret.keys()):
+    #    value = ret[key] 
+    #    if key in ("log", "fsllog", "report") or key[0] == "_":
+    #        ret.pop(key)
+    #    elif isinstance(value, AslImage):
+    #        ret[key] = aslimage_to_qpdata(value)
+    #    elif isinstance(value, Image):
+    #        ret[key] = fslimage_to_qpdata(value)
+    #    elif isinstance(value, np.ndarray) or isinstance(value, six.string_types) or \
+    #         isinstance(value, list) or isinstance(value, dict):
+    #        ret[key] = value
+    #    elif isinstance(value, Workspace):
+    #        ret[key] = wsp_to_dict(value)
     return ret
 
 def qp_oxasl(worker_id, queue, asldata, options):
@@ -516,7 +518,7 @@ class OxaslProcess(LogProcess):
             "savedir" : self._tempdir,
             "save_report" : self._reportdir is not None,
         }
-        if "mask" in options:
+        if "roi" in options:
             oxasl_options["mask"] = self.get_roi(options, self.data.grid)
 
         # FIXME this is not great... We are assuming we know what 
@@ -547,8 +549,7 @@ class OxaslProcess(LogProcess):
 
     def finished(self, worker_output):
         try:
-            ret = worker_output[0]
-            self.debug("OXASL finished - output:\n%s", ret["output"])
+            self.debug("OXASL finished\n")
             self.debug("Expected output: %s", self._expected_output)
 
             # Load expected output
@@ -603,18 +604,18 @@ class OxaslProcess(LogProcess):
             name = os.path.basename(fname).split(".", 1)[0]
             if os.path.isdir(fname):
                 self._load_default_output(fname, suffix + "_" + name)
-
-            # FIXME yuk
-            try:
-                qpdata = load(fname)
-                # Remember this is from a temporary file
-                # FIXME which outputs are ROIs?
-                qpdata = NumpyData(qpdata.raw(), grid=qpdata.grid, name=name + suffix)
-                self.ivm.add(qpdata)
-            except:
+            else:
+                # FIXME yuk
                 try:
-                    mat = load_matrix(fname)
-                    extra = MatrixExtra(name+suffix, mat)
-                    self.ivm.add_extra(extra, name=name + suffix)
+                    qpdata = load(fname)
+                    # Remember this is from a temporary file
+                    # FIXME which outputs are ROIs?
+                    qpdata = NumpyData(qpdata.raw(), grid=qpdata.grid, name=name + suffix)
+                    self.ivm.add(qpdata)
                 except:
-                    self.warn("Failed to load: %s", fname)
+                    try:
+                        mat = load_matrix(fname)
+                        extra = MatrixExtra(name+suffix, mat)
+                        self.ivm.add_extra(extra, name=name + suffix)
+                    except:
+                        self.warn("Failed to load: %s", fname)

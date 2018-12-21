@@ -111,7 +111,7 @@ class CalibrationOptions(OxaslOptionWidget):
         self.refregion_opts = OptionBox("Reference region calibration")
         self.refregion_opts.add("Reference type", ChoiceOption(["CSF", "WM", "GM", "Custom"]), key="tissref")
         self.refregion_opts.option("tissref").sig_changed.connect(self._ref_tiss_changed)
-        self.refregion_opts.add("Custom reference ROI", DataOption(self.ivm, rois=True, data=False), key="ref_mask", checked=True)
+        self.refregion_opts.add("Custom reference ROI", DataOption(self.ivm, rois=True, data=False), key="refmask", checked=True)
         # TODO pick specific region of ROI
         self.refregion_opts.add("Reference T1 (s)", NumericOption(minval=0, maxval=10, default=4.3, step=0.1), key="t1r")
         self.refregion_opts.add("Reference T2 (ms)", NumericOption(minval=0, maxval=2000, default=750, step=50), key="t2r")
@@ -412,6 +412,7 @@ class AnalysisOptions(OxaslOptionWidget):
         self.optbox.add("T1 (s)", NumericOption(minval=0, maxval=3, default=1.3), key="t1")
         self.optbox.add("T1b (s)", NumericOption(minval=0, maxval=3, default=1.65), key="t1b")
         self.optbox.add("Model fitting options")
+        self.optbox.add("Custom ROI", DataOption(self.ivm, data=False, rois=True), key="roi", checked=True)
         self.optbox.add("Spatial regularization", BoolOption(default=True), key="spatial")
         self.optbox.add("Fix label duration", BoolOption(default=False, invert=True), key="infertau")
         self.optbox.add("Fix arterial transit time", BoolOption(default=True, invert=True), key="inferbat")
@@ -420,7 +421,21 @@ class AnalysisOptions(OxaslOptionWidget):
         self.optbox.add("Partial volume correction", BoolOption(default=False), key="pvcorr")
         
     def _wp_changed(self):
-        pass
+        pass # FIXME change defaults and disable controls
+
+class OutputOptions(OxaslOptionWidget):
+    """
+    OXASL processing options related to output
+    """
+
+    def _init_ui(self):
+        self.optbox.add("Output in native (ASL) space", BoolOption(default=True), key="output-native")
+        self.optbox.add("Output in structural space", BoolOption(), key="output-struc")
+        #self.optbox.add("Output in standard (MNI) space", BoolOption(), key="output-std")
+        self.optbox.add("Output mask", BoolOption(default=True), key="save-mask")
+        #self.optbox.add("Output calibration data", BoolOption(), key="save-calib")
+        #self.optbox.add("Output registration data", BoolOption(), key="save-reg")
+        self.optbox.add("Save HTML report", FileOption(dirs=True), key="report", checked=True)
 
 class OxaslWidget(QpWidget):
     """
@@ -440,6 +455,7 @@ class OxaslWidget(QpWidget):
         vbox.addWidget(cite)
 
         self.tabs = QtGui.QTabWidget()
+        #self.tabs.setTabPosition(QtGui.QTabWidget.West)
         vbox.addWidget(self.tabs)
 
         self.asldata = AslImageWidget(self.ivm, parent=self)
@@ -463,8 +479,11 @@ class OxaslWidget(QpWidget):
         self.calibration = CalibrationOptions(self.ivm)
         self.tabs.addTab(self.calibration, "Calibration")
 
-        self.analysis = AnalysisOptions()
-        self.tabs.addTab(self.analysis, "Analysis Options")
+        self.analysis = AnalysisOptions(self.ivm)
+        self.tabs.addTab(self.analysis, "Analysis")
+
+        self.output = OutputOptions()
+        self.tabs.addTab(self.output, "Output")
 
         runbox = RunWidget(self, title="Run processing", save_option=True)
         runbox.sig_postrun.connect(self._postrun)
@@ -481,7 +500,7 @@ class OxaslWidget(QpWidget):
             self.tabs.insertTab(self.tabs.indexOf(self.preproc)+1, widget, name.title())
 
     def _enabled_tabs(self):
-        tabs = [self.preproc, self.structural, self.calibration, self.analysis]
+        tabs = [self.preproc, self.structural, self.calibration, self.analysis, self.output]
         for tab in self._optional_tabs.values():
             if self.tabs.indexOf(tab) >= 0:
                 tabs.append(tab)
