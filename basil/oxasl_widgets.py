@@ -11,7 +11,7 @@ import numpy as np
 from PySide import QtGui, QtCore
 
 from quantiphyse.gui.options import OptionBox, ChoiceOption, NumericOption, BoolOption, DataOption, FileOption
-from quantiphyse.gui.widgets import QpWidget, TitleWidget, Citation, RunWidget, MultiExpander
+from quantiphyse.gui.widgets import QpWidget, TitleWidget, Citation, RunWidget, MultiExpander, FslDirWidget
 
 from .aslimage_widget import AslImageWidget
 from .veasl_widgets import VeslocsWidget, EncodingWidget, PriorsWidget, ClasslistWidget, veslocs_default
@@ -489,6 +489,11 @@ class OxaslWidget(QpWidget):
         runbox.sig_postrun.connect(self._postrun)
         vbox.addWidget(runbox)
         vbox.addStretch(1)
+
+        fsldir = FslDirWidget()
+        vbox.addWidget(fsldir)
+        #fsldir.sig_changed.connect(self._fsldir_changed)
+        #self._fsldir_changed(fsldir.fsldir)
 
     def _data_changed(self):
         self._enable_tab("veasl", self.asldata.md["iaf"] == "ve")
