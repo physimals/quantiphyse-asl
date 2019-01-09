@@ -450,7 +450,7 @@ def wsp_to_dict(wsp):
     #        ret[key] = wsp_to_dict(value)
     return ret
 
-def qp_oxasl(worker_id, queue, asldata, options):
+def qp_oxasl(worker_id, queue, fsldir, fsldevdir, asldata, options):
     """
     Worker function for asynchronous oxasl run
 
@@ -460,6 +460,13 @@ def qp_oxasl(worker_id, queue, asldata, options):
     try:
         from oxasl import Workspace
         from oxasl.oxford_asl import oxasl
+
+        if "FSLOUTPUTTYPE" not in os.environ:
+            os.environ["FSLOUTPUTTYPE"] = "NIFTI_GZ"
+        if fsldir:
+            os.environ["FSLDIR"] = fsldir
+        if fsldevdir:
+            os.environ["FSLDEVDIR"] = fsldevdir
 
         for key, value in options.items():
             if isinstance(value, QpData):
@@ -545,7 +552,14 @@ class OxaslProcess(LogProcess):
             #("BBR registration", "Final ASL->Structural registration"),
         ]
         self.current_step = 0
-        self.start_bg([self.data, oxasl_options])
+        # Pass FSLDIR and FSLDEVDIR to the process as it will not necessarily
+        # inherit the environment and these might be configured by the user
+        fsldir, fsldevdir = None, None
+        if "FSLDIR" in os.environ:
+            fsldir = os.environ["FSLDIR"]
+        if "FSLDEVDIR" in os.environ:
+            fsldevdir = os.environ["FSLDEVDIR"]
+        self.start_bg([fsldir, fsldevdir, self.data, oxasl_options])
 
     def finished(self, worker_output):
         try:
