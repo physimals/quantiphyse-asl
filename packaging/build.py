@@ -57,6 +57,22 @@ def build_plugin(package_name, rootdir, distdir, platform):
     except ImportError:
         print("Not bundling OXASL_VE - not found")
 
+    try:
+        import oxasl_deblur
+        aslmoddir = os.path.join(packagedir, "deps", "oxasl_deblur")
+        aslmod_src = os.path.abspath(os.path.dirname(oxasl_deblur.__file__))
+        shutil.copytree(aslmod_src, aslmoddir)
+    except ImportError:
+        print("Not bundling OXASL_DEBLUR - not found")
+
+    try:
+        import oxasl_enable
+        aslmoddir = os.path.join(packagedir, "deps", "oxasl_enable")
+        aslmod_src = os.path.abspath(os.path.dirname(oxasl_enable.__file__))
+        shutil.copytree(aslmod_src, aslmoddir)
+    except ImportError:
+        print("Not bundling OXASL_ENABLE - not found")
+
 pkgdir = os.path.abspath(os.path.dirname(__file__))
 rootdir = os.path.abspath(os.path.join(pkgdir, os.pardir))
 distdir = os.path.join(rootdir, "dist")
