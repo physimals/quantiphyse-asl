@@ -455,7 +455,6 @@ class OxaslWidget(QpWidget):
         vbox.addWidget(cite)
 
         self.tabs = QtGui.QTabWidget()
-        #self.tabs.setTabPosition(QtGui.QTabWidget.West)
         vbox.addWidget(self.tabs)
 
         self.asldata = AslImageWidget(self.ivm, parent=self)
