@@ -146,7 +146,7 @@ class AslBasilWidget(QpWidget):
 
         try:
             self.process = BasilProcess(self.ivm)
-        except QpException, e:
+        except QpException as e:
             self.process = None
             vbox.addWidget(QtGui.QLabel(str(e)))
             return
@@ -376,7 +376,7 @@ class AslMultiphaseWidget(QpWidget):
 
         try:
             self.process = BasilProcess(self.ivm)
-        except QpException, e:
+        except QpException as e:
             self.process = None
             vbox.addWidget(QtGui.QLabel(str(e)))
             return
@@ -427,11 +427,8 @@ class AslMultiphaseWidget(QpWidget):
         self._aslimage_changed()
 
     def _aslimage_changed(self):
-        if self.aslimage_widget.data is not None:
-            self.aslimage.widget.set_data_name(self.aslimage_widget.data.name)
-
         if self.aslimage_widget.valid and self.aslimage_widget.data is not None and self.aslimage_widget.md.get("iaf", "") != "mp":
-            self.aslimage_widget.warn_label.setText("This widget is only for use with multiphase data")
+            self.aslimage_widget.warn_label.warn("This widget is only for use with multiphase data")
             self.aslimage_widget.warn_label.setVisible(True)
             self.runbox.setEnabled(False)
         else:
