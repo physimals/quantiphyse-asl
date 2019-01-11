@@ -1,7 +1,10 @@
-# Template for analysing multiphase ASL data
-#
-# This template applies bias correction with Michael Chappell's
-# additional bias reduction
+"""
+Template for analysing multiphase ASL data
+
+This template applies bias correction with Michael Chappell's
+additional bias reduction
+"""
+
 BIASCORR_MC_YAML = """
 Processing:
 
