@@ -35,7 +35,7 @@ import six
 
 from quantiphyse.data import DataGrid, NumpyData, QpData, load
 from quantiphyse.data.extras import MatrixExtra
-from quantiphyse.utils import get_plugins, QpException, load_matrix
+from quantiphyse.utils import get_local_shlib, get_plugins, QpException, load_matrix
 from quantiphyse.utils.batch import Script
 from quantiphyse.processes import Process
 from quantiphyse.utils.cmdline import OutputStreamMonitor, LogProcess
@@ -421,35 +421,6 @@ class AslCalibProcess(Process):
         self.log(logbuf.getvalue())
         self.ivm.add(name=output_name, data=calibrated.data, grid=data.grid, make_current=True)
 
-def wsp_to_dict(wsp):
-    """
-    Convert a workspace to a dictionary
-
-    Note that fsl.data.image.Image instances are
-    converted to QpData
-
-    FIXME do we need this? Removed so we can just
-    get stuff from the temp dir
-    """
-    #from fsl.data.image import Image
-    #from oxasl import Workspace, AslImage
-    ret = {}
-    #ret = dict(vars(wsp))
-    #for key in list(ret.keys()):
-    #    value = ret[key] 
-    #    if key in ("log", "fsllog", "report") or key[0] == "_":
-    #        ret.pop(key)
-    #    elif isinstance(value, AslImage):
-    #        ret[key] = aslimage_to_qpdata(value)
-    #    elif isinstance(value, Image):
-    #        ret[key] = fslimage_to_qpdata(value)
-    #    elif isinstance(value, np.ndarray) or isinstance(value, six.string_types) or \
-    #         isinstance(value, list) or isinstance(value, dict):
-    #        ret[key] = value
-    #    elif isinstance(value, Workspace):
-    #        ret[key] = wsp_to_dict(value)
-    return ret
-
 def qp_oxasl(worker_id, queue, fsldir, fsldevdir, asldata, options):
     """
     Worker function for asynchronous oxasl run
@@ -460,6 +431,10 @@ def qp_oxasl(worker_id, queue, fsldir, fsldevdir, asldata, options):
     try:
         from oxasl import Workspace
         from oxasl.oxford_asl import oxasl
+
+        # FIXME executables too
+        options["fabber_libs"] = {"asl" : get_local_shlib("fabber_models_asl", __file__)}
+        options["fabber_corelib"] = get_plugins("fabber-corelib")[0]
 
         if "FSLOUTPUTTYPE" not in os.environ:
             os.environ["FSLOUTPUTTYPE"] = "NIFTI_GZ"
@@ -477,8 +452,7 @@ def qp_oxasl(worker_id, queue, fsldir, fsldevdir, asldata, options):
         wsp = Workspace(log=output_monitor, **options)
         oxasl(wsp)
 
-        ret = wsp_to_dict(wsp)
-        return worker_id, True, ret
+        return worker_id, True, {}
     except:
         traceback.print_exc()
         return worker_id, False, sys.exc_info()[1]
