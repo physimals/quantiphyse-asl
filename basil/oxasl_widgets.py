@@ -71,15 +71,15 @@ class StructuralData(OxaslOptionWidget):
         self.optbox.add("Structural data from", ChoiceOption(["No structural data", "Structural image", "FSL_ANAT output"], [None, "img", "fsl_anat"]), key="struc_src")
         self.optbox.option("struc_src").sig_changed.connect(self._data_from_changed)
         
-        self.optbox.add("Structural image", DataOption(self.ivm, include_4d=False), key="struc")
+        self.optbox.add("Structural image", DataOption(self.ivm, include_4d=False, explicit=True), key="struc")
         self.optbox.add("FSL_ANAT directory", FileOption(dirs=True), key="fslanat")
         self.optbox.set_visible("fslanat", False)
         
         self.optbox.add("Override automatic segmentation", key="override_label")
-        self.optbox.add("Brain image", DataOption(self.ivm, include_4d=False), key="struc_bet", checked=True)
-        self.optbox.add("White matter", DataOption(self.ivm, include_4d=False), key="wmseg", checked=True)
-        self.optbox.add("Grey matter", DataOption(self.ivm, include_4d=False), key="gmseg", checked=True)
-        self.optbox.add("CSF", DataOption(self.ivm, include_4d=False), key="csfseg", checked=True)
+        self.optbox.add("Brain image", DataOption(self.ivm, include_4d=False, explicit=True), key="struc_bet", checked=True)
+        self.optbox.add("White matter", DataOption(self.ivm, include_4d=False, explicit=True), key="wmseg", checked=True)
+        self.optbox.add("Grey matter", DataOption(self.ivm, include_4d=False, explicit=True), key="gmseg", checked=True)
+        self.optbox.add("CSF", DataOption(self.ivm, include_4d=False, explicit=True), key="csfseg", checked=True)
         self._data_from_changed()
 
     def _data_from_changed(self):
@@ -97,7 +97,7 @@ class CalibrationOptions(OxaslOptionWidget):
     def _init_ui(self):
         self.optbox.add("Calibration method", ChoiceOption(["None", "Voxelwise", "Reference region"], [None, "voxelwise", "single"]), key="calib_method")
         self.optbox.option("calib_method").sig_changed.connect(self._calib_method_changed)
-        self.optbox.add("Calibration image", DataOption(self.ivm), key="calib") 
+        self.optbox.add("Calibration image", DataOption(self.ivm, explicit=True), key="calib") 
         self.optbox.add("Sequence TR (s)", NumericOption(minval=0, maxval=20, default=3.2, step=0.1), key="tr", checked=True)
         self.optbox.add("Sequence TE (ms)", NumericOption(minval=0, maxval=100, default=0, step=5), key="te", checked=True)
         self.optbox.add("Calibration gain", NumericOption(minval=0, maxval=5, default=1, step=0.05), key="cgain", checked=True)
@@ -111,7 +111,7 @@ class CalibrationOptions(OxaslOptionWidget):
         self.refregion_opts = OptionBox("Reference region calibration")
         self.refregion_opts.add("Reference type", ChoiceOption(["CSF", "WM", "GM", "Custom"]), key="tissref")
         self.refregion_opts.option("tissref").sig_changed.connect(self._ref_tiss_changed)
-        self.refregion_opts.add("Custom reference ROI", DataOption(self.ivm, rois=True, data=False), key="refmask", checked=True)
+        self.refregion_opts.add("Custom reference ROI", DataOption(self.ivm, rois=True, data=False, explicit=True), key="refmask", checked=True)
         # TODO pick specific region of ROI
         self.refregion_opts.add("Reference T1 (s)", NumericOption(minval=0, maxval=10, default=4.3, step=0.1), key="t1r", checked=True)
         self.refregion_opts.add("Reference T2 (ms)", NumericOption(minval=0, maxval=2000, default=750, step=50), key="t2r", checked=True)
@@ -169,13 +169,13 @@ class PreprocOptions(OxaslOptionWidget):
         self.optbox.add("Echo spacing (ms)", NumericOption(minval=0, maxval=1, step=0.01), key="echospacing")
 
         self.fmap_opts = OptionBox("Fieldmap distortion correction")
-        self.fmap_opts.add("Fieldmap image (rads)", DataOption(self.ivm, include_4d=False), key="fmap")
-        self.fmap_opts.add("Fieldmap magnitude image (rads)", DataOption(self.ivm, include_4d=False), key="fmapmag")
-        self.fmap_opts.add("Fieldmap magnitude brain image (rads)", DataOption(self.ivm, include_4d=False), key="fmapmagbrain")        
+        self.fmap_opts.add("Fieldmap image (rads)", DataOption(self.ivm, include_4d=False, explicit=True), key="fmap")
+        self.fmap_opts.add("Fieldmap magnitude image (rads)", DataOption(self.ivm, include_4d=False, explicit=True), key="fmapmag")
+        self.fmap_opts.add("Fieldmap magnitude brain image (rads)", DataOption(self.ivm, include_4d=False, explicit=True), key="fmapmagbrain")        
         self.vbox.addWidget(self.fmap_opts)
 
         self.cblip_opts = OptionBox("Phase-encoding reversed distortion correction")
-        self.cblip_opts.add("Phase-encode reversed image", DataOption(self.ivm, include_4d=False), key="cblip")
+        self.cblip_opts.add("Phase-encode reversed image", DataOption(self.ivm, include_4d=False, explicit=True), key="cblip")
         self.vbox.addWidget(self.cblip_opts)
         
         self._distcorr_changed()
@@ -235,8 +235,8 @@ class EnableOptions(OxaslOptionWidget):
 
     def _init_ui(self):
         self.optbox.add("Minimum number of repeats per time point", NumericOption(intonly=True, default=3, minval=1, maxval=20), key="min_nvols")
-        self.optbox.add("Custom grey matter ROI", DataOption(self.ivm, rois=True, data=False), checked=True, key="gm_roi")
-        self.optbox.add("Custom noise ROI", DataOption(self.ivm, rois=True, data=False), checked=True, key="noise_roi")
+        self.optbox.add("Custom grey matter ROI", DataOption(self.ivm, rois=True, data=False, explicit=True), checked=True, key="gm_roi")
+        self.optbox.add("Custom noise ROI", DataOption(self.ivm, rois=True, data=False, explicit=True), checked=True, key="noise_roi")
 
         self.vbox.addWidget(QtGui.QLabel("Quality measures"))
         self.qms_table = QtGui.QTableView()
@@ -316,7 +316,7 @@ class VeaslOptions(OxaslOptionWidget):
         self.optbox.add("Infer vessel locations on mean data", BoolOption(default=True), key="init_loc")
         inferv = self.optbox.add("Infer flow velocity", BoolOption(), key="infer_v")
         inferv.sig_changed.connect(self._inferv_changed)
-        self.optbox.add("Custom Inference ROI", DataOption(self.ivm, rois=True, data=False), checked=True, key="infer_mask")
+        self.optbox.add("Custom Inference ROI", DataOption(self.ivm, rois=True, data=False, explicit=True), checked=True, key="infer_mask")
         
         self._method_changed()
 
@@ -412,7 +412,7 @@ class AnalysisOptions(OxaslOptionWidget):
         self.optbox.add("T1 (s)", NumericOption(minval=0, maxval=3, default=1.3), key="t1", checked=True)
         self.optbox.add("T1b (s)", NumericOption(minval=0, maxval=3, default=1.65), key="t1b", checked=True)
         self.optbox.add("Model fitting options")
-        self.optbox.add("Custom ROI", DataOption(self.ivm, data=False, rois=True), key="roi", checked=True)
+        self.optbox.add("Custom ROI", DataOption(self.ivm, data=False, rois=True, explicit=True), key="roi", checked=True)
         self.optbox.add("Spatial regularization", BoolOption(default=True), key="spatial")
         self.optbox.add("Fix label duration", BoolOption(default=False, invert=True), key="infertau")
         self.optbox.add("Fix arterial transit time", BoolOption(default=True, invert=True), key="inferbat")
