@@ -553,20 +553,25 @@ class OxaslProcess(LogProcess):
 
             # Load 'default' output
             self._load_default_output(os.path.join(self._tempdir, "output"))
+            self._load_default_output(os.path.join(self._tempdir, "corrected"), suffix="_corr")
 
             # Copy report and open if required
             if self._reportdir:
+                input_dir = os.path.join(self._tempdir, "report")
                 output_dir = os.path.abspath(os.path.join(self._reportdir, "oxasl_report"))
-                if os.path.exists(output_dir):
-                    if os.path.isdir(output_dir):
-                        shutil.rmtree(output_dir)
-                    else:
-                        os.remove(output_dir)
-                shutil.copytree(os.path.join(self._tempdir, "report"), output_dir)
-                indexurl = "file://" + os.path.join(output_dir, "index.html")
+                if os.path.exists(input_dir):
+                    if os.path.exists(output_dir):
+                        if os.path.isdir(output_dir):
+                            shutil.rmtree(output_dir)
+                        else:
+                            os.remove(output_dir)
+                    shutil.copytree(input_dir, output_dir)
+                    indexurl = "file://" + os.path.join(output_dir, "index.html")
 
-                import webbrowser
-                webbrowser.open(indexurl, new=0, autoraise=True)
+                    import webbrowser
+                    webbrowser.open(indexurl, new=0, autoraise=True)
+                else:
+                    raise QpException("HTML report was requested but sphinx was not available")
         finally:
             if self._tempdir:
                 shutil.rmtree(self._tempdir)
