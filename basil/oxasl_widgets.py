@@ -202,8 +202,12 @@ class PreprocOptions(OxaslOptionWidget):
             # Echo spacing needs to be passed in seconds
             opts["echospacing"] = opts["echospacing"] / 1000
 
-        if opts.pop("distcorr", None) == "fmap":
+        distcorr = opts.pop("distcorr", None)
+        if distcorr == "fmap":
             opts.update(self.fmap_opts.values())
+        elif distcorr == "cblip":
+            opts.update(self.cblip_opts.values())
+            
         return opts
 
 class DistcorrOptions(OxaslOptionWidget):
@@ -433,7 +437,8 @@ class OutputOptions(OxaslOptionWidget):
         self.optbox.add("Output in structural space", BoolOption(), key="output_struc")
         #self.optbox.add("Output in standard (MNI) space", BoolOption(), key="output-std")
         self.optbox.add("Output mask", BoolOption(default=True), key="save_mask")
-        #self.optbox.add("Output calibration data", BoolOption(), key="save-calib")
+        #self.optbox.add("Output calibration data", BoolOption(), key="save_calib")
+        self.optbox.add("Output corrected input data", BoolOption(), key="save_corrected")
         #self.optbox.add("Output registration data", BoolOption(), key="save-reg")
         self.optbox.add("Save HTML report", FileOption(dirs=True), key="report", checked=True)
 
