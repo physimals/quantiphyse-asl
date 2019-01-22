@@ -7,6 +7,10 @@ Copyright (c) 2013-2018 University of Oxford
 """
 
 from __future__ import division, unicode_literals, absolute_import
+from itertools import product
+
+import numpy as np
+import scipy
 
 from PySide import QtCore, QtGui
 
@@ -39,7 +43,7 @@ Default metadata which should work for any data file
 """
 DEFAULT_METADATA = {
     "iaf" : "diff",
-    "order" : "tr", 
+    "ibf" : "tis", 
     "tis" : [1.5,], 
     "taus" : [1.4,], 
     "casl" : True
@@ -72,12 +76,9 @@ class AslMetadataView(object):
         if "tis" not in self.md and "plds" not in self.md: self.md["tis"] = [1.5]
         if "taus" not in self.md: self.md["taus"] = [1.4]
         if "iaf" not in self.md: self.md["iaf"] = "diff"
-        if "order" not in self.md:
-            if self.md["iaf"] == "diff": 
-                self.md["order"] = "rt"
-            else:
-                self.md["order"] = "lrt"
-
+        if "order" not in self.md and "ibf" not in self.md:
+            # FIXME is this the oxford_asl default?
+            self.md["ibf"] = "tis"
         self._update()
 
     def _update(self):
@@ -113,6 +114,11 @@ class AslMetadataView(object):
             rpts[idx] += 1
         return rpts
 
+def _order_from_md(md):
+    from oxasl.image import data_order
+    iaf, order, ibf_guessed = data_order(md.get("iaf", None), md.get("ibf", None), md.get("order", None))
+    return iaf, order, ibf_guessed
+
 class DataStructure(QtGui.QWidget, AslMetadataView):
     """
     Visual preview of the structure of an ASL data set
@@ -132,7 +138,7 @@ class DataStructure(QtGui.QWidget, AslMetadataView):
         grid.addWidget(self, ypos, 0, 1, 3)
 
     def _update(self):
-        self.order = self.md.get("order", "lrt")
+        _, self.order, _ = _order_from_md(self.md)
         self.num = {
             "t" : len(self.md.get("tis", self.md.get("plds", [1]))),
             # This is for display purposes only so good enough for variable repeats
@@ -197,6 +203,129 @@ class DataStructure(QtGui.QWidget, AslMetadataView):
                     p.fillRect(ox, oy, 2*w-1, height-1, QtGui.QBrush(QtGui.QColor(*col)))
                     p.drawText(ox, oy, 2*w-1, height, QtCore.Qt.AlignHCenter, label)
                     self._draw_groups(p, groups[1:], ox, oy+height, 2*w, height)
+
+class SignalPreview(QtGui.QWidget):
+    """
+    Visual preview of the signal expected from an ASL data set
+    """
+    HFACTOR = 0.95
+    VFACTOR = 0.95
+
+    def __init__(self):
+        QtGui.QWidget.__init__(self)
+        self._order = "lrt"
+        self._num = {"l" : 2, "r" : 1, "t" : 1}
+        self._data = None
+        self._mean_signal = None
+        self.setFixedHeight(50)
+
+    @property
+    def order(self):
+        return self._order
+
+    @order.setter
+    def order(self, order):
+        self._order = order
+        self.repaint()
+
+    @property
+    def num(self):
+        return self._num
+
+    @num.setter
+    def num(self, num):
+        self._num = num
+        self.repaint()
+
+    @property
+    def data(self):
+        return self._data
+
+    @data.setter
+    def data(self, data):
+        self._data = data
+        self._get_mean_signal()
+        self._get_fitted_signal()
+        self.repaint()
+
+    def paintEvent(self, _):
+        """
+        Re-draw the structure diagram
+        """
+        h, w = self.height(), self.width()
+        ox = w*(1-self.HFACTOR)/2
+        oy = h*(1-self.VFACTOR)/2
+        p = QtGui.QPainter(self)
+        p.drawLine(0, h-1, 0, 0)
+        p.drawLine(0, h-1, w-1, h-1)
+        if self._data is not None:
+            self._draw_signal(self._fitted_signal, p, ox, oy, w*self.HFACTOR, h*self.VFACTOR, col=QtCore.Qt.red)
+            self._draw_signal(self._mean_signal, p, ox, oy, w*self.HFACTOR, h*self.VFACTOR, col=QtCore.Qt.green)
+
+    def _get_mean_signal(self):
+        if self._data is not None:
+            voxel_range = np.nanmax(self._data, axis=-1) - np.nanmin(self._data, axis=-1)
+            good_signal = np.percentile(voxel_range, 99)
+            good_signals = self._data[voxel_range >= good_signal]
+            self._mean_signal = np.mean(good_signals, axis=0)
+
+    def _draw_signal(self, sig, p, ox, oy, w, h, col):
+        sigmin, sigmax = np.min(sig), np.max(sig)
+        sigrange = sigmax - sigmin
+        if sigrange == 0:
+            yvals = [oy + 0.5*h for _ in sig]
+        else:
+            yvals = [oy + (1-float(val-sigmin)/sigrange)*h for val in sig]
+
+        path = QtGui.QPainterPath(QtCore.QPointF(ox, yvals[0])) 
+        pen = QtGui.QPen(QtGui.QBrush(col), 2, QtCore.Qt.SolidLine)
+        p.setPen(pen)
+        npts = len(yvals)
+        for idx, yval in enumerate(yvals):
+            x, y = ox+w*float(idx)/npts, yval
+            path.lineTo(x, y)
+        p.drawPath(path)
+
+    def _get_fitted_signal(self):
+        sigmin, sigmax = np.min(self._mean_signal), np.max(self._mean_signal)
+        sigrange = sigmax - sigmin
+        if sigrange == 0:
+            sigrange = 1
+        initial = sigrange * np.arange(self._num["t"])[::-1] + sigmin
+        result = scipy.optimize.least_squares(self._sigdiff, initial)
+        self._fitted_signal = self._tdep_to_signal(result.x)
+
+    def _tdep_to_signal(self, tdep):
+        vals = []
+        for char in self._order[::-1]:
+            vals.append(range(self._num[char]))
+        t_idx = self._order[::-1].index('t')
+        return np.array([tdep[items[t_idx]] for items in product(*vals)])
+
+    def _sigdiff(self, tdep):
+        return self._mean_signal - self._tdep_to_signal(tdep)
+
+class SignalView(QtCore.QObject, AslMetadataView):
+    """
+    """
+
+    def __init__(self, grid, ypos):
+        QtCore.QObject.__init__(self)
+        AslMetadataView.__init__(self)
+        self.preview = SignalPreview()
+        grid.addWidget(QtGui.QLabel("Signal fit"), ypos, 0, alignment=QtCore.Qt.AlignTop)
+        grid.addWidget(self.preview, ypos, 1, 1, 2)
+
+    def _update(self):
+        _, self.preview.order, _ = _order_from_md(self.md)
+        self.preview.num = {
+            "t" : len(self.md.get("tis", self.md.get("plds", [1]))),
+            # This is for display purposes only so good enough for variable repeats
+            "r" : self.md.get("nrpts", self._get_auto_repeats()[0]),
+            "l" : self._get_num_label_vols()
+        }
+        if self.data is not None:
+            self.preview.data = self.data.raw()
 
 class NumPhases(NumericOption, AslMetadataView):
     """
@@ -286,6 +415,50 @@ class DataOrdering(QtCore.QObject, AslMetadataView):
         self.md["order"] = order[::-1]
         self.sig_md_changed.emit(self)
 
+class BlockFormat(ChoiceOption, AslMetadataView):
+    """
+    Menu to display/set the block format
+    """
+
+    def __init__(self, grid, ypos):
+        self._indexes = ["tis", "rpts"]
+        ChoiceOption.__init__(self, "Data grouped by", grid, ypos, choices=["TIs", "Repeats", "Custom"])
+        self.order_edit = QtGui.QLineEdit()
+        grid.addWidget(self.order_edit, ypos, 2)
+        self.order_edit.setEnabled(False)
+        AslMetadataView.__init__(self)
+        self.sig_changed.connect(self._changed)
+        self.order_edit.editingFinished.connect(self._changed)
+    
+    def _update(self):
+        if "order" in self.md:
+            idx = 2
+        elif self.md.get("ibf", None) == "rpt":
+            idx = 1
+        elif self.md.get("ibf", None) == "tis":
+            idx = 0
+        else:
+            idx = 2
+        self.combo.setCurrentIndex(idx)
+        
+        _, order, _ = _order_from_md(self.md)
+        self.order_edit.setText(order)
+        self.order_edit.setEnabled(idx == 2)
+        
+    def _changed(self):
+        idx = self.combo.currentIndex()
+        if idx == 0:
+            self.md["ibf"] = "tis"
+            self.md.pop("order", None)
+        elif idx == 1:
+            self.md["ibf"] = "rpt"
+            self.md.pop("order", None)
+        else:
+            self.md.pop("ibf", None)
+            self.md["order"] = self.order_edit.text()
+
+        self.sig_md_changed.emit(self)
+
 class LabelType(ChoiceOption, AslMetadataView):
     """
     Menu to display/set the type of labelling images present
@@ -304,10 +477,11 @@ class LabelType(ChoiceOption, AslMetadataView):
     def _changed(self):
         iaf = self._indexes[self.combo.currentIndex()]
         self.md["iaf"] = iaf
-        if iaf == "diff":
-            self.md["order"] = self.md["order"].replace("l", "")
-        elif "l" not in self.md["order"]:
-            self.md["order"] = "l" + self.md["order"]
+        if "order" in self.md:
+            if iaf == "diff":
+                self.md["order"] = self.md["order"].replace("l", "")
+            elif "l" not in self.md["order"]:
+                self.md["order"] = "l" + self.md["order"]
 
         if iaf == "mp":
             if "nphases" not in self.md:
@@ -586,7 +760,7 @@ class AslImageWidget(QtGui.QWidget, LogSource):
         grid.addWidget(self.data_combo, 0, 1)
 
         view_classes = [LabelType, RepeatsChoice, NumPhases, NumEncodings,
-                        DataOrdering, DataStructure,
+                        BlockFormat, DataStructure, SignalView,
                         Labelling, Readout, SliceTime, Multiband, Times,
                         BolusDurations, VariableRepeats]
 
@@ -648,8 +822,9 @@ class AslImageWidget(QtGui.QWidget, LogSource):
                 self.md = dict(self.default_md)
                 if self.data.nvols % 2 == 0:
                     # Even number of volumes - guess TC pairs
+                    # FIXME don't need block format for single TI
                     self.md["iaf"] = "tc"
-                    self.md["order"] = "ltr"
+                    self.md["ibf"] = "tis"
             for view in self.views:
                 view.set_data(self.data, self.md)
             self._validate_metadata()
