@@ -109,7 +109,7 @@ class CalibrationOptions(OxaslOptionWidget):
         self.vbox.addWidget(self.voxelwise_opts)
 
         self.refregion_opts = OptionBox("Reference region calibration")
-        self.refregion_opts.add("Reference type", ChoiceOption(["CSF", "WM", "GM", "Custom"]), key="tissref")
+        self.refregion_opts.add("Reference type", ChoiceOption(["CSF", "WM", "GM", "Custom"], ["csf", "wm", "gm", None]), key="tissref")
         self.refregion_opts.option("tissref").sig_changed.connect(self._ref_tiss_changed)
         self.refregion_opts.add("Custom reference ROI", DataOption(self.ivm, rois=True, data=False, explicit=True), key="refmask", checked=True)
         # TODO pick specific region of ROI
@@ -130,10 +130,10 @@ class CalibrationOptions(OxaslOptionWidget):
             self.optbox.set_visible(opt, method is not None)
 
     def _ref_tiss_changed(self):
-        ref_type = self.ref_type.combo.currentText()
-        if ref_type != "Custom":
+        tissref = self.refregion_opts.option("tissref").value
+        if tissref is not None:
             from oxasl.calib import tissue_defaults
-            t1, t2, t2star, pc = tissue_defaults(ref_type)
+            t1, t2, t2star, pc = tissue_defaults(tissref)
             self.refregion_opts.option("t1r").value = t1
             self.refregion_opts.option("t2r").value = t2
             self.refregion_opts.option("pcr").value = pc
