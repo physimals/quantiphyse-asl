@@ -62,6 +62,28 @@ class OxaslOptionWidget(QtGui.QWidget):
         """
         pass
 
+    def set_wp_mode(self, enabled):
+        """
+        Set whether the widget should display options in 'white paper mode'
+
+        In white paper mode defaults are expected to follow the Alsop 2015
+        consensus paper on ASL analysis although the user may explicitly
+        override these defaults
+
+        :param enabled: If True, white paper mode is enabled
+        """
+        pass
+
+    def set_asldata_metadata(self, md):
+        """
+        Set the metadata defined for the base ASL data
+        
+        Widgets may modify defaults based on the ASL metadata
+
+        :param md: Metadata as key/value mapping
+        """
+        pass
+
 class StructuralData(OxaslOptionWidget):
     """
     OXASL processing options related to structural data
@@ -70,12 +92,11 @@ class StructuralData(OxaslOptionWidget):
     def _init_ui(self):
         self.optbox.add("Structural data from", ChoiceOption(["No structural data", "Structural image", "FSL_ANAT output"], [None, "img", "fsl_anat"]), key="struc_src")
         self.optbox.option("struc_src").sig_changed.connect(self._data_from_changed)
-        
         self.optbox.add("Structural image", DataOption(self.ivm, include_4d=False, explicit=True), key="struc")
         self.optbox.add("FSL_ANAT directory", FileOption(dirs=True), key="fslanat")
         self.optbox.set_visible("fslanat", False)
-        
-        self.optbox.add("Override automatic segmentation", key="override_label")
+        self.optbox.add("")
+        self.optbox.add("<b>Override automatic segmentation</b>", key="override_label")
         self.optbox.add("Brain image", DataOption(self.ivm, include_4d=False, explicit=True), key="struc_bet", checked=True)
         self.optbox.add("White matter", DataOption(self.ivm, include_4d=False, explicit=True), key="wmseg", checked=True)
         self.optbox.add("Grey matter", DataOption(self.ivm, include_4d=False, explicit=True), key="gmseg", checked=True)
@@ -150,6 +171,11 @@ class CalibrationOptions(OxaslOptionWidget):
         elif method == "single":
             opts.update(self.refregion_opts.values())
         return opts
+
+    def set_wp_mode(self, wp_enabled):
+        if wp_enabled:
+            self.optbox.option("calib_method").value = "voxelwise"
+        self.optbox.option("calib_method").setEnabled(not wp_enabled)
 
 class PreprocOptions(OxaslOptionWidget):
     """
@@ -264,6 +290,7 @@ class EnableOptions(OxaslOptionWidget):
         self.qms_model.setHorizontalHeaderItem(4, QtGui.QStandardItem("Included"))
 
         results = self.ivm.extras.get("enable_results", None)
+        print("ENABLE results: ", results)
         if results is not None:
             results = sorted(results, key=lambda k: (k['ti_idx'], k['rpt']))
             self.qms_model.setRowCount(len(results))
@@ -409,13 +436,8 @@ class AnalysisOptions(OxaslOptionWidget):
     """
 
     def _init_ui(self):
-        self.optbox.add("White paper mode", BoolOption(), key="wp")
-        self.optbox.option("wp").sig_changed.connect(self._wp_changed)
-        self.optbox.add("Override defaults")
-        self.optbox.add("Arterial Transit Time", NumericOption(minval=0, maxval=2.5, default=1.3), key="bat", checked=True)
-        self.optbox.add("T1 (s)", NumericOption(minval=0, maxval=3, default=1.3), key="t1", checked=True)
-        self.optbox.add("T1b (s)", NumericOption(minval=0, maxval=3, default=1.65), key="t1b", checked=True)
-        self.optbox.add("Model fitting options")
+        self._batdefault = 1.3
+        self.optbox.add("<b>Model fitting options</b>")
         self.optbox.add("Custom ROI", DataOption(self.ivm, data=False, rois=True, explicit=True), key="roi", checked=True)
         self.optbox.add("Spatial regularization", BoolOption(default=True), key="spatial")
         self.optbox.add("Fix label duration", BoolOption(default=False, invert=True), key="infertau")
@@ -423,9 +445,42 @@ class AnalysisOptions(OxaslOptionWidget):
         self.optbox.add("T1 value uncertainty", BoolOption(default=False), key="infert1")
         self.optbox.add("Macro vascular component", BoolOption(default=True), key="inferart")
         self.optbox.add("Partial volume correction", BoolOption(default=False), key="pvcorr")
+        self.optbox.add("")
+        self.optbox.add("<b>Default parameters</b>")
+        self.optbox.add("Arterial Transit Time", NumericOption(minval=0, maxval=2.5, default=self._batdefault), key="bat", checked=True)
+        self.optbox.add("T1 (s)", NumericOption(minval=0, maxval=3, default=1.3), key="t1", checked=True)
+        self.optbox.add("T1b (s)", NumericOption(minval=0, maxval=3, default=1.65), key="t1b", checked=True)
+        self.optbox.add("")
+        self.optbox.add("<b>White paper mode</b>  (defaults from Alsop, 2015 consensus paper)")
+        self.optbox.add("Enable white paper mode", BoolOption(), key="wp")
         
-    def _wp_changed(self):
-        pass # FIXME change defaults and disable controls
+    def set_wp_mode(self, enabled):
+        """
+        In white paper mode BAT=0, T1=T1b=1.65 no inference of BAT or ART
+        """
+        if enabled:
+            self.optbox.set_checked("bat", False)
+            self.optbox.set_checked("t1", False)
+            self.optbox.set_checked("t1b", False)
+            
+        self.optbox.option("infertau").value = False
+        self.optbox.option("inferbat").value = not enabled
+        self.optbox.option("infert1").value = False
+        self.optbox.option("inferart").value = not enabled
+        self.optbox.option("pvcorr").value = False
+        self.optbox.option("bat").value = 0 if enabled else 1.3
+        self.optbox.option("t1").value = 1.65 if enabled else 1.3
+        self.optbox.option("t1b").value = 1.65
+
+    def set_asldata_metadata(self, md):
+        """ 
+        Set the BAT default to 0.7 for PASL, 1.3 for CASL unless it is already zero
+        (which probably means we are in WP mode)
+        """
+        casl = md.get("casl", True)
+        self._batdefault = 1.3 if casl else 0.7
+        current = self.optbox.option("bat").value
+        self.optbox.option("bat").value = 0 if current == 0 else self._batdefault
 
 class OutputOptions(OxaslOptionWidget):
     """
@@ -484,6 +539,7 @@ class OxaslWidget(QpWidget):
         self.tabs.addTab(self.calibration, "Calibration")
 
         self.analysis = AnalysisOptions(self.ivm)
+        self.analysis.optbox.option("wp").sig_changed.connect(self._wp_changed)
         self.tabs.addTab(self.analysis, "Analysis")
 
         self.output = OutputOptions()
@@ -501,6 +557,8 @@ class OxaslWidget(QpWidget):
 
     def _data_changed(self):
         self._enable_tab("veasl", self.asldata.md["iaf"] == "ve")
+        for tab in self._enabled_tabs():
+            tab.set_asldata_metadata(self.asldata.md)
 
     def _enable_tab(self, name, enable):
         widget = self._optional_tabs[name]
@@ -519,8 +577,7 @@ class OxaslWidget(QpWidget):
         options = self.asldata.get_options()
         output = {}
 
-        tabs = self._enabled_tabs()
-        for tab in tabs:
+        for tab in self._enabled_tabs():
             options.update(tab.options())
             output.update(tab.output())
 
@@ -542,6 +599,14 @@ class OxaslWidget(QpWidget):
         tabs = self._enabled_tabs()
         for tab in tabs:
             tab.postrun()
+
+    def _wp_changed(self):
+        """
+        White paper mode is special and needs to be passed to all widgets so they can
+        update defaults accordingly
+        """
+        for tab in self._enabled_tabs():
+            tab.set_wp_mode(self.analysis.optbox.option("wp").value)
 
     def processes(self):
         """ 
