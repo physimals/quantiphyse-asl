@@ -488,13 +488,21 @@ class OutputOptions(OxaslOptionWidget):
     """
 
     def _init_ui(self):
+        self.optbox.add("<b>Output spaces</b>")
         self.optbox.add("Output in native (ASL) space", BoolOption(default=True), key="output_native")
         self.optbox.add("Output in structural space", BoolOption(), key="output_struc")
         #self.optbox.add("Output in standard (MNI) space", BoolOption(), key="output-std")
+        self.optbox.add("")
+        self.optbox.add("<b>Additional outputs</b>")
+        self.optbox.add("Output parameter variance maps", BoolOption(), key="output_var")
         self.optbox.add("Output mask", BoolOption(default=True), key="save_mask")
-        #self.optbox.add("Output calibration data", BoolOption(), key="save_calib")
+        self.optbox.add("Output calibration data", BoolOption(), key="save_calib")
         self.optbox.add("Output corrected input data", BoolOption(), key="save_corrected")
-        #self.optbox.add("Output registration data", BoolOption(), key="save-reg")
+        self.optbox.add("Output registration data", BoolOption(), key="save_reg")
+        self.optbox.add("Output structural segmentation", BoolOption(), key="save_struc")
+        self.optbox.add("Output model fitting data", BoolOption(), key="save_basil")
+        self.optbox.add("")
+        self.optbox.add("<b>Summary report</b>")
         self.optbox.add("Save HTML report", FileOption(dirs=True), key="report", checked=True)
 
 class OxaslWidget(QpWidget):

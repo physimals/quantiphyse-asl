@@ -551,6 +551,10 @@ class OxaslProcess(LogProcess):
             # Load 'default' output
             self._load_default_output(os.path.join(self._tempdir, "output"))
             self._load_default_output(os.path.join(self._tempdir, "corrected"), suffix="_corr")
+            self._load_default_output(os.path.join(self._tempdir, "structural"), suffix="_struc")
+            self._load_default_output(os.path.join(self._tempdir, "calibration"), suffix="_calib")
+            self._load_default_output(os.path.join(self._tempdir, "basil"), suffix="_fitting")
+            self._load_default_output(os.path.join(self._tempdir, "reg"), suffix="_reg")
 
             # Copy report and open if required
             if self._reportdir:
