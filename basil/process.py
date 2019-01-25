@@ -22,8 +22,6 @@ in quantiphyse using the metadata extensions.
 
 Copyright (c) 2013-2018 University of Oxford
 """
-from __future__ import print_function
-
 import sys
 import traceback
 import tempfile
@@ -492,10 +490,12 @@ class OxaslProcess(LogProcess):
         # this is deleted in the `finished` method which is guaranteed to
         # be called.
         self._tempdir = tempfile.mkdtemp("qp_oxasl")
+
+        # Set up basic options
         self._reportdir = options.pop("report", None)
+        self._expected_output = options.pop("output", {})
 
         oxasl_options = {
-            "output" : {},
             "debug" : True,
             "savedir" : self._tempdir,
             "save_report" : self._reportdir is not None,
@@ -503,6 +503,8 @@ class OxaslProcess(LogProcess):
         if "roi" in options:
             oxasl_options["mask"] = self.get_roi(options, self.data.grid)
 
+        # For options which are images set the value to the actual QpData object
+        #
         # FIXME this is not great... We are assuming we know what 
         # options are actually images. Could the widgets themselves tell us?
         for key in list(options.keys()):
@@ -544,12 +546,7 @@ class OxaslProcess(LogProcess):
 
             # Load expected output
             for name, path in self._expected_output.items():
-                item = self._get_return_item(self._tempdir, path)
-                if isinstance(item, QpData):
-                    self._output_data_items.append(name)
-                    self.ivm.add(item, name=name)
-                else:
-                    self.ivm.add_extra(name, item)
+                self._load_expected_output(self._tempdir, path, name)
 
             # Load 'default' output
             self._load_default_output(os.path.join(self._tempdir, "output"))
@@ -580,15 +577,12 @@ class OxaslProcess(LogProcess):
     def output_data_items(self):
         return self._output_data_items
 
-    def _get_return_item(self, outdir, path):
+    def _load_expected_output(self, outdir, path, name):
         self.debug("Looking for item: %s", path)
         matches = glob.glob(os.path.join(outdir, path, ".*"))
-        for match in matches:
-            try:
-                return load(match)
-            except:
-                # FIXME try loading matrices and fall back to 'stuff'
-                self.warn("Failed to load: %s", path)
+        for fname in matches:
+            # FIXME could be roi?
+            self._load(fname, name)
 
     def _load_default_output(self, outdir, suffix=""):
         """ 
@@ -605,19 +599,21 @@ class OxaslProcess(LogProcess):
             if os.path.isdir(fname):
                 self._load_default_output(fname, suffix + "_" + name)
             else:
-                name = name + suffix
-                # FIXME yuk we have no idea if the output is a data file or a 
-                # matrix or something else entirely so just go with trial and error
-                try:
-                    qpdata = load(fname)
-                    # Remember this is from a temporary file so need to copy the actual data
-                    qpdata = NumpyData(qpdata.raw(), grid=qpdata.grid, name=name, roi=is_roi)
-                    self._output_data_items.append(name)
-                    self.ivm.add(qpdata)
-                except:
-                    try:
-                        mat = load_matrix(fname)
-                        extra = MatrixExtra(name, mat)
-                        self.ivm.add_extra(extra, name=name)
-                    except:
-                        self.warn("Failed to load: %s", fname)
+                self._load(fname, name + suffix, is_roi)
+
+    def _load(self, fname, name, is_roi=False):
+        # FIXME yuk we have no idea if the output is a data file or a 
+        # matrix or something else entirely so just go with trial and error
+        try:
+            qpdata = load(fname)
+            # Remember this is from a temporary file so need to copy the actual data
+            qpdata = NumpyData(qpdata.raw(), grid=qpdata.grid, name=name, roi=is_roi)
+            self._output_data_items.append(name)
+            self.ivm.add(qpdata)
+        except:
+            try:
+                mat = load_matrix(fname)
+                extra = MatrixExtra(name, mat)
+                self.ivm.add_extra(extra, name=name)
+            except:
+                self.warn("Failed to load: %s", fname)
