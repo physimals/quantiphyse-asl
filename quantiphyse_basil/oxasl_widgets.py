@@ -292,9 +292,9 @@ class EnableOptions(OxaslOptionWidget):
         results = self.ivm.extras.get("enable_results", None)
         print("ENABLE results: ", results)
         if results is not None:
-            results = sorted(results, key=lambda k: (k['ti_idx'], k['rpt']))
-            self.qms_model.setRowCount(len(results))
-            for row, result in enumerate(results):
+            df = results.df.sort_values(('ti_idx', 'rpt'))
+            self.qms_model.setRowCount(len(df))
+            for row, result in df.iterrows():
                 for col, meas in enumerate(("ti", "rpt", "cnr", "qual", "selected")):
                     self.qms_model.setItem(row, col, QtGui.QStandardItem(str(result[meas])))
 

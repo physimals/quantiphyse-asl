@@ -156,7 +156,7 @@ def create_msi(name, plugin_name, distdir, pkgdir, version_str, version_str_disp
     if version_str_display == None:
         version_str_display = version_str
 
-    convert_licence(os.path.join(pkgdir, os.pardir, "licence.md"), os.path.join(pkgdir, "licence.rtf"))
+    convert_licence(os.path.join(pkgdir, os.pardir, "LICENSE"), os.path.join(pkgdir, "licence.rtf"))
 
     msidir = os.path.join(pkgdir, MSI_SUBDIR)
     shutil.rmtree(msidir, ignore_errors=True)

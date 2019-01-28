@@ -30,10 +30,11 @@ import os
 import glob
 
 import six
+import pandas as pd
 
 from quantiphyse.data import DataGrid, NumpyData, QpData, load
-from quantiphyse.data.extras import MatrixExtra
-from quantiphyse.utils import get_local_shlib, get_plugins, QpException, load_matrix
+from quantiphyse.data.extras import MatrixExtra, DataFrameExtra
+from quantiphyse.utils import get_plugins, QpException, load_matrix
 from quantiphyse.utils.batch import Script
 from quantiphyse.processes import Process
 from quantiphyse.utils.cmdline import OutputStreamMonitor, LogProcess
@@ -429,10 +430,7 @@ def qp_oxasl(worker_id, queue, fsldir, fsldevdir, asldata, options):
     try:
         from oxasl import Workspace
         from oxasl.oxford_asl import oxasl
-
-        # FIXME executables too
-        options["fabber_libs"] = {"asl" : get_local_shlib("fabber_models_asl", __file__)}
-        options["fabber_corelib"] = get_plugins("fabber-corelib")[0]
+        options["fabber_dirs"] = get_plugins("fabber-dirs")
 
         if "FSLOUTPUTTYPE" not in os.environ:
             os.environ["FSLOUTPUTTYPE"] = "NIFTI_GZ"
@@ -575,49 +573,59 @@ class OxaslProcess(LogProcess):
                     raise QpException("HTML report was requested but sphinx was not available")
         finally:
             if self._tempdir:
-                shutil.rmtree(self._tempdir)
+                #shutil.rmtree(self._tempdir)
                 self.tempdir = None
 
     def output_data_items(self):
         return self._output_data_items
 
     def _load_expected_output(self, outdir, path, name):
+        path = os.path.join(outdir, path + ".*")
         self.debug("Looking for item: %s", path)
-        matches = glob.glob(os.path.join(outdir, path, ".*"))
+        matches = glob.glob(path)
         for fname in matches:
+            self.debug("Found: %s", fname)
             # FIXME could be roi?
             self._load(fname, name)
 
     def _load_default_output(self, outdir, suffix=""):
         """ 
         Recursively load output images into the IVM. 
-
-        TODO be more fine-grained about this?
         """
         self.debug("output from: %s", outdir)
         files = glob.glob(os.path.join(outdir, "*"))
         for fname in files:
             self.debug("found %s", fname)
             name = os.path.basename(fname).split(".", 1)[0]
-            is_roi = "mask" in name
             if os.path.isdir(fname):
                 self._load_default_output(fname, suffix + "_" + name)
             else:
+                is_roi = "mask" in name
+                self.debug("trying to load %s", fname)
                 self._load(fname, name + suffix, is_roi)
 
     def _load(self, fname, name, is_roi=False):
-        # FIXME yuk we have no idea if the output is a data file or a 
-        # matrix or something else entirely so just go with trial and error
         try:
-            qpdata = load(fname)
-            # Remember this is from a temporary file so need to copy the actual data
-            qpdata = NumpyData(qpdata.raw(), grid=qpdata.grid, name=name, roi=is_roi)
-            self._output_data_items.append(name)
-            self.ivm.add(qpdata)
-        except:
-            try:
+            extension = ""
+            parts = fname.split(".", 1)
+            if len(parts) > 1: 
+                extension = parts[1]
+            self.debug("Loading: %s (%s)", fname, extension)
+            if extension == 'mat':
                 mat = load_matrix(fname)
                 extra = MatrixExtra(name, mat)
-                self.ivm.add_extra(extra, name=name)
-            except:
-                self.warn("Failed to load: %s", fname)
+                self.ivm.add_extra(name, extra)
+            elif extension == 'csv':
+                df = pd.read_csv(fname)
+                extra = DataFrameExtra(name, df)
+                self.ivm.add_extra(name, extra)
+            elif extension in ('nii', 'nii.gz'):
+                self.debug("Nifti data")
+                qpdata = load(fname)
+                # Remember this is from a temporary file so need to copy the actual data
+                qpdata = NumpyData(qpdata.raw(), grid=qpdata.grid, name=name, roi=is_roi)
+                self._output_data_items.append(name)
+                self.ivm.add(qpdata)
+        except:
+            self.warn("Failed to load: %s", fname)
+            traceback.print_exc()

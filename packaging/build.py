@@ -76,7 +76,7 @@ def build_plugin(package_name, rootdir, distdir, platform):
 pkgdir = os.path.abspath(os.path.dirname(__file__))
 rootdir = os.path.abspath(os.path.join(pkgdir, os.pardir))
 distdir = os.path.join(rootdir, "dist")
-package_name = "basil"
+package_name = "quantiphyse_basil"
 
 sys.path.append(rootdir)
 
