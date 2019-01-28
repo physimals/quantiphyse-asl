@@ -5,6 +5,7 @@ import os
 import subprocess
 import re
 import io
+import glob
 
 from setuptools import setup
 from setuptools import find_packages
@@ -71,6 +72,14 @@ def get_version(rootdir):
                 version = "unknown"
     return version
 
+def get_package_data(rootdir):
+    """
+    Get extra data files to install into the package, e.g. icons
+    """
+    return {
+        MODULE : glob.glob("%s/*.png" % MODULE) + glob.glob("%s/*.svg" % MODULE)
+    }
+
 module_dir = os.path.abspath(os.path.dirname(__file__))
 
 kwargs = {
@@ -85,6 +94,8 @@ kwargs = {
     'license' : 'License granted by University of Oxford for use by academics carrying out research and not for use by consumers or commercial businesses. See LICENSE file for more details',
     'install_requires' : get_requirements(module_dir),
     'packages' : find_packages(),
+    'package_data' : get_package_data(module_dir),
+    'include_package_data' : True,
     'entry_points' : {
         'quantiphyse_plugins' : [
             '%s = %s:QP_MANIFEST' % (MODULE, MODULE),
