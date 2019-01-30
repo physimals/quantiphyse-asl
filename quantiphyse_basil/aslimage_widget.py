@@ -8,6 +8,7 @@ Copyright (c) 2013-2018 University of Oxford
 
 from __future__ import division, unicode_literals, absolute_import
 import itertools
+import traceback
 
 import numpy as np
 import scipy
@@ -18,7 +19,7 @@ from quantiphyse.gui.widgets import OverlayCombo, ChoiceOption, NumericOption, O
 import quantiphyse.gui.options as opt
 from quantiphyse.utils import LogSource, QpException
 
-from .process import  qpdata_to_aslimage
+from .process import  qpdata_to_aslimage, fslimage_to_qpdata
 
 from ._version import __version__
 
@@ -518,13 +519,18 @@ class LabelType(ChoiceOption, AslMetadataView):
     def __init__(self, grid, ypos):
         self._indexes = ["tc", "ct", "diff", "ve", "mp"]
         ChoiceOption.__init__(self, "Data format", grid, ypos, choices=["Label-control pairs", "Control-Label pairs", "Already subtracted", "Vessel encoded", "Multiphase"])
+        self.pwi_btn = QtGui.QPushButton("Generate PWI")
+        self.pwi_btn.setToolTip("Generate a perfusion-weighted image by performing label-control subtraction and averaging")
+        self.pwi_btn.clicked.connect(self._pwi)
+        grid.addWidget(self.pwi_btn, ypos, 2)
         AslMetadataView.__init__(self)
         self.sig_changed.connect(self._changed)
     
     def _update(self):
         iaf = self.md.get("iaf", "tc")
         self.combo.setCurrentIndex(self._indexes.index(iaf))
-        
+        self.pwi_btn.setEnabled(iaf in ("tc", "ct"))
+
     def _changed(self):
         iaf = self._indexes[self.combo.currentIndex()]
         self.md["iaf"] = iaf
@@ -547,6 +553,17 @@ class LabelType(ChoiceOption, AslMetadataView):
             self.md.pop("nenc", None)
 
         self.sig_md_changed.emit(self)
+
+    def _pwi(self):
+        try:
+            aslimage, _ = qpdata_to_aslimage(self.data, metadata=self.md)
+            pwi = aslimage.perf_weighted()
+            qpd = fslimage_to_qpdata(pwi, name=self.data.name + "_pwi")
+            self.ivm.add(qpd, name=qpd.name, make_current=True)
+        except:
+            # FIXME ignore but button should not be enabled if 
+            # metadata is inconsistent!
+            traceback.print_exc()
 
 class Labelling(ChoiceOption, AslMetadataView):
     """
@@ -820,6 +837,7 @@ class AslImageWidget(QtGui.QWidget, LogSource):
             if view_class in kwargs.get("ignore_views", ()): 
                 continue
             view = view_class(grid, ypos=idx+2)
+            view.ivm = self.ivm
             view.set_data(self.data, self.md)
             view.sig_md_changed.connect(self._metadata_changed)
             self.views.append(view)
