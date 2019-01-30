@@ -290,9 +290,8 @@ class EnableOptions(OxaslOptionWidget):
         self.qms_model.setHorizontalHeaderItem(4, QtGui.QStandardItem("Included"))
 
         results = self.ivm.extras.get("enable_results", None)
-        print("ENABLE results: ", results)
         if results is not None:
-            df = results.df.sort_values(('ti_idx', 'rpt'))
+            df = results.df.sort_values(['ti_idx', 'rpt'])
             self.qms_model.setRowCount(len(df))
             for row, result in df.iterrows():
                 for col, meas in enumerate(("ti", "rpt", "cnr", "qual", "selected")):
@@ -597,7 +596,9 @@ class OxaslWidget(QpWidget):
         for item in output.items():
             self.debug("%s: %s" % item)
         
-        options["output"] = output
+        if output:
+            options["output"] = output
+
         return options
 
     def _postrun(self):
