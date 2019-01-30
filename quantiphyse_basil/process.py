@@ -492,6 +492,7 @@ class OxaslProcess(LogProcess):
         # Set up basic options
         self._reportdir = options.pop("report", None)
         self._expected_output = options.pop("output", {})
+        self._output_prefix = options.pop("output-prefix", "")
 
         oxasl_options = {
             "debug" : True,
@@ -623,7 +624,7 @@ class OxaslProcess(LogProcess):
                 self.debug("Nifti data")
                 qpdata = load(fname)
                 # Remember this is from a temporary file so need to copy the actual data
-                qpdata = NumpyData(qpdata.raw(), grid=qpdata.grid, name=name, roi=is_roi)
+                qpdata = NumpyData(qpdata.raw(), grid=qpdata.grid, name=self._output_prefix + name, roi=is_roi)
                 self._output_data_items.append(name)
                 self.ivm.add(qpdata)
         except:

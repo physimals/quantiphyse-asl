@@ -10,7 +10,7 @@ import numpy as np
 
 from PySide import QtGui, QtCore
 
-from quantiphyse.gui.options import OptionBox, ChoiceOption, NumericOption, BoolOption, DataOption, FileOption
+from quantiphyse.gui.options import OptionBox, ChoiceOption, NumericOption, BoolOption, DataOption, FileOption, TextOption
 from quantiphyse.gui.widgets import QpWidget, TitleWidget, Citation, RunWidget, MultiExpander, FslDirWidget
 
 from .aslimage_widget import AslImageWidget
@@ -185,8 +185,8 @@ class PreprocOptions(OxaslOptionWidget):
 
     def _init_ui(self):
         self.optbox.add("Motion correction", BoolOption(default=True), key="mc")
-        opt = self.optbox.add("Deblurring", BoolOption(), key="deblur")
-        opt.sig_changed.connect(self._deblur_changed)
+        #opt = self.optbox.add("Deblurring", BoolOption(), key="deblur")
+        #opt.sig_changed.connect(self._deblur_changed)
         opt = self.optbox.add("ENABLE volume selection", BoolOption(), key="use_enable")
         opt.sig_changed.connect(self._enable_changed)
         self.optbox.add("Distortion correction", ChoiceOption(["Fieldmap", "Phase encoding reversed calibration"], ["fmap", "cblip"]), key="distcorr", checked=True)
@@ -487,7 +487,8 @@ class OutputOptions(OxaslOptionWidget):
     """
 
     def _init_ui(self):
-        self.optbox.add("<b>Output spaces</b>")
+        self.optbox.add("<b>Default outputs</b>")
+        self.optbox.add("Prefix for output data names", TextOption(), key="output-prefix", checked=True)
         self.optbox.add("Output in native (ASL) space", BoolOption(default=True), key="output_native")
         self.optbox.add("Output in structural space", BoolOption(), key="output_struc")
         #self.optbox.add("Output in standard (MNI) space", BoolOption(), key="output-std")
