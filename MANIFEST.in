@@ -1,1 +1,3 @@
 include LICENSE requirements.txt
+include quantiphyse_basil/*.png quantiphyse_basil/*.svg
+
