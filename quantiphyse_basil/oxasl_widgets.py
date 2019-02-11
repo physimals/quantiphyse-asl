@@ -175,7 +175,6 @@ class CalibrationOptions(OxaslOptionWidget):
     def set_wp_mode(self, wp_enabled):
         if wp_enabled:
             self.optbox.option("calib_method").value = "voxelwise"
-        self.optbox.option("calib_method").setEnabled(not wp_enabled)
 
 class PreprocOptions(OxaslOptionWidget):
     """
