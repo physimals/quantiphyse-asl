@@ -37,15 +37,9 @@ class AslPreprocWidgetTest(WidgetTest):
         self.processEvents()
         self.assertFalse(self.error)
         
-        # 3D data so set to already differenced
-        label_type_widget = _struc_widget(self.w.aslimage_widget, LabelType)
-        label_type_widget.combo.setCurrentIndex(2)
-        self.processEvents()
-
-        struc = self.ivm.data["data_3d"].metadata.get("AslData", None)
+        struc = self.w.aslimage_widget.md
         self.assertTrue(struc is not None)
         self.assertEqual(len(struc["tis"]), 1)
-        self.assertTrue("l" not in struc["order"])
         self.assertEqual(struc["iaf"], "diff")
 
         self.harmless_click(self.w.run_btn)
@@ -72,7 +66,7 @@ class AslPreprocWidgetTest(WidgetTest):
         struc = self.ivm.data["data_4d"].metadata.get("AslData", None)
         self.assertTrue(struc is not None)
         self.assertEqual(len(struc["tis"]), 1)
-        self.assertTrue("l" in struc["order"])
+        self.assertEqual("tis", struc["ibf"])
         self.assertEqual("tc", struc["iaf"])
         
         self.harmless_click(self.w.run_btn)
@@ -181,20 +175,6 @@ class AslPreprocWidgetTest(WidgetTest):
         self.w.aslimage_widget.set_data_name("data_4d")
         self.processEvents()
         self.assertFalse(self.error)
-        
-        # Treat data as TC pairs in order prt (top = outermost)
-        label_type_widget = _struc_widget(self.w.aslimage_widget, LabelType)
-        label_type_widget.combo.setCurrentIndex(0)
-        data_order_widget = _struc_widget(self.w.aslimage_widget, DataOrdering)
-        items = []
-        for group in "trl":
-            labels = ORDER_LABELS[group]
-            if isinstance(labels, tuple):
-                items.append(labels[2])
-            else:
-                items.append(labels["tc"][2])
-        data_order_widget.group_list.setItems(items)
-        self.processEvents()
 
         # Select reorder
         self.w.reorder_cb.setChecked(True)
@@ -257,9 +237,8 @@ class MultiphaseProcessTest(ProcessTest):
         self.assertTrue("mean_offset" in self.ivm.data)
         self.assertTrue("mean_phase" in self.ivm.data)
 
-class BasilProcessTest(ProcessTest):
+class OxaslProcessTest(ProcessTest):
 
-    @unittest.skipIf(True, "Temporarily disabled")
     @unittest.skipIf("--fast" in sys.argv, "Slow test")
     def testFslCourse(self):
         """
@@ -273,25 +252,22 @@ class BasilProcessTest(ProcessTest):
       rois:
         /home/ibmeuser/data/asl/fsl_course/ASL/mask.nii.gz: aslmask
 
-  - Basil:
+  - Oxasl:
       data: asldata
       roi : aslmask
-      order: prt
-      tis: [0.25, 0.5, 0.75, 1.0, 1.25, 1.5]
+      iaf: tc
+      ibf: tis
       casl: True
+      tis: [0.25, 0.5, 0.75, 1.0, 1.25, 1.5]
       taus: [1.4, 1.4, 1.4, 1.4, 1.4, 1.4]
       infertiss: True
+      inferbat: True
+      output_native: True
 """
         self.run_yaml(yaml)
         self.assertEqual(self.status, Process.SUCCEEDED)
-        self.assertTrue("perfusion" in self.ivm.data)
-        self.assertTrue("perfusion_std" in self.ivm.data)
-        self.assertTrue("arrival" in self.ivm.data)
-        self.assertTrue("arrival_std" in self.ivm.data)
-        
-
-if __name__ == '__main__':
-    unittest.main()
+        self.assertTrue("perfusion_native" in self.ivm.data)
+        self.assertTrue("arrival_native" in self.ivm.data)
 
 class OxaslWidgetTest(WidgetTest):
 
@@ -302,13 +278,16 @@ class OxaslWidgetTest(WidgetTest):
         for item in set(list(options.keys()) + list(expected.keys())):
             #print(item, options.get(item, "MISSING"), expected.get(item, "MISSING"))
             self.assertTrue(item in options)
-            self.assertTrue(item in expected)
-            self.assertEqual(options[item], expected[item])
+            if item not in expected:
+                # If an item was not expected it must be false-equivalent (e.g. False, None etc)
+                self.assertFalse(bool(options[item]))
+            else:
+                self.assertEqual(options[item], expected[item])
 
     def _md(self, **kwargs):
         ret = {
             "iaf" : "tc",
-            "order" : "lrt", 
+            "ibf" : "rpt", 
             "plds" : [1.7,], 
             "taus" : [1.3,], 
             "casl" : True
@@ -319,41 +298,34 @@ class OxaslWidgetTest(WidgetTest):
     def _preproc(self, **kwargs):
         ret = {
             "mc" : True,
-            "use_enable" : False,
-            "deblur" : False,
         }
         ret.update(kwargs)
         return ret
 
     def _analysis(self, **kwargs):
         ret = {
-            "infertau" : False,
             "inferart" : True,
             "inferbat" : True,
-            "infert1" : False,
-            "pvcorr" : False,
             "spatial" : True,
-            "t1b" : 1.65,
-            "t1" : 1.3,
-            "bat" : 1.3,
-            "wp" : False,
-            "save-reg" : False,
-            "save-calib" : False,
-            "save-struc" : False,
-            "save-native" : True,
-            "save-mask" : True,
-            "save-std" : False,
+            "save_mask" : True,
+        }
+        ret.update(kwargs)
+        return ret
+
+    def _output(self, **kwargs):
+        ret = {
+            "output_native" : True,
         }
         ret.update(kwargs)
         return ret
 
     def _options(self, **kwargs):
         ret = {
-            "output" : {}
         }
         ret.update(self._md())
         ret.update(self._preproc())
         ret.update(self._analysis())
+        ret.update(self._output())
         ret.update(kwargs)
         return ret
 
@@ -368,9 +340,9 @@ class OxaslWidgetTest(WidgetTest):
         self.assertFalse(self.error)
 
         options = self.w._options()
-        self._options_match(options, self._options(data="data_4d", **md))
+        self._options_match(options, self._options(data="data_4d"))
 
-    def testMoco(self):
+    def testNoMoco(self):
         qpdata = NumpyData(self.data_4d, grid=self.grid, name="data_4d")
         md = self._md()
         qpdata.metadata["AslData"] = md
@@ -380,11 +352,11 @@ class OxaslWidgetTest(WidgetTest):
         self.processEvents()
         self.assertFalse(self.error)
 
-        self.w.preproc.optbox.option("mc").value = True
+        self.w.preproc.optbox.option("mc").value = False
         self.processEvents()
 
         options = self.w._options()
-        self._options_match(options, self._options(data="data_4d", mc=True, **md))
+        self._options_match(options, self._options(data="data_4d", mc=False))
 
     def testInferArt(self):
         qpdata = NumpyData(self.data_4d, grid=self.grid, name="data_4d")
@@ -400,7 +372,7 @@ class OxaslWidgetTest(WidgetTest):
         self.processEvents()
 
         options = self.w._options()
-        self._options_match(options, self._options(data="data_4d", inferart=True, **md))
+        self._options_match(options, self._options(data="data_4d", inferart=True))
 
 if __name__ == '__main__':
     unittest.main()
