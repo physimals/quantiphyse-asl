@@ -10,7 +10,7 @@ from .widgets import AslPreprocWidget, AslBasilWidget, AslCalibWidget, AslMultip
 from .oxasl_widgets import OxaslWidget
 from .aslimage_widget import AslImageWidget
 from .process import AslDataProcess, AslPreprocProcess, BasilProcess, AslMultiphaseProcess, OxaslProcess
-from .tests import AslPreprocWidgetTest, MultiphaseProcessTest, OxaslWidgetTest
+from .tests import AslPreprocWidgetTest, MultiphaseProcessTest, OxaslProcessTest, OxaslWidgetTest
 
 QP_MANIFEST = {
     "widgets" : [AslPreprocWidget, AslMultiphaseWidget, OxaslWidget],
@@ -19,5 +19,5 @@ QP_MANIFEST = {
     "qwidgets" : [AslImageWidget],
     "module-dirs" : ["deps",],
     "widget-tests" : [AslPreprocWidgetTest, OxaslWidgetTest],
-    "process-tests" : [MultiphaseProcessTest,],
+    "process-tests" : [OxaslProcessTest, MultiphaseProcessTest,],
 }
