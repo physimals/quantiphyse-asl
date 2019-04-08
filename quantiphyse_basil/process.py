@@ -495,7 +495,7 @@ class OxaslProcess(LogProcess):
         self._output_prefix = options.pop("output-prefix", "")
 
         oxasl_options = {
-            "debug" : True,
+            "debug" : self.debug_enabled(),
             "savedir" : self._tempdir,
             "save_report" : self._reportdir is not None,
         }
@@ -571,10 +571,13 @@ class OxaslProcess(LogProcess):
                     import webbrowser
                     webbrowser.open(indexurl, new=0, autoraise=True)
                 else:
-                    raise QpException("HTML report was requested but sphinx was not available")
+                    self.warn("HTML report was requested but sphinx was not available")
         finally:
             if self._tempdir:
-                #shutil.rmtree(self._tempdir)
+                if not self.debug_enabled():
+                    shutil.rmtree(self._tempdir)
+                else:
+                    self.warn("Debug mode enabled - temporary output is in %s" % self._tempdir)
                 self.tempdir = None
 
     def output_data_items(self):
