@@ -12,6 +12,10 @@ from .aslimage_widget import AslImageWidget
 from .process import AslDataProcess, AslPreprocProcess, BasilProcess, AslMultiphaseProcess, OxaslProcess
 from .tests import AslPreprocWidgetTest, MultiphaseProcessTest, OxaslProcessTest, OxaslWidgetTest
 
+# Workaround ugly warning about wx
+import logging
+logging.getLogger("fsl.utils.platform").setLevel(logging.CRITICAL)
+
 QP_MANIFEST = {
     "widgets" : [AslPreprocWidget, AslMultiphaseWidget, OxaslWidget],
     "processes" : [AslPreprocProcess, AslMultiphaseProcess, OxaslProcess],
