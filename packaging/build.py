@@ -41,8 +41,9 @@ def build_plugin(package_name, rootdir, distdir, platform):
     # Copy Fabber shared lib
     shlib_dir, shlib_template = get_lib_template(platform)
     LIB = os.path.join(fsldir, shlib_dir, shlib_template % "fabber_models_asl")
-    print("%s -> %s" % (LIB, packagedir))
-    shutil.copy(LIB, packagedir)
+    if os.path.exists(LIB):
+        print("%s -> %s" % (LIB, packagedir))
+        shutil.copy(LIB, packagedir)
 
     # Copy Python dependencies
     import oxasl
