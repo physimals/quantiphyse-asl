@@ -838,7 +838,6 @@ class AslImageWidget(QtGui.QWidget, LogSource):
                 continue
             view = view_class(grid, ypos=idx+2)
             view.ivm = self.ivm
-            view.set_data(self.data, self.md)
             view.sig_md_changed.connect(self._metadata_changed)
             self.views.append(view)
 
