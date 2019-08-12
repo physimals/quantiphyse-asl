@@ -248,13 +248,10 @@ class OxaslProcessTest(ProcessTest):
         yaml = """
   - Load:
       data:
-        /home/ibmeuser/data/asl/fsl_course/ASL/mpld_asltc.nii.gz: asldata
-      rois:
-        /home/ibmeuser/data/asl/fsl_course/ASL/mask.nii.gz: aslmask
+        /mnt/hgfs/win/data/asl/fsl_course/mpld_asltc.nii.gz: asldata
 
   - Oxasl:
       data: asldata
-      roi : aslmask
       iaf: tc
       ibf: tis
       casl: True
