@@ -8,7 +8,10 @@ from __future__ import division, unicode_literals, absolute_import
 
 import numpy as np
 
-from PySide import QtGui, QtCore
+try:
+    from PySide import QtGui, QtCore, QtGui as QtWidgets
+except ImportError:
+    from PySide2 import QtGui, QtCore, QtWidgets
 
 from quantiphyse.gui.options import OptionBox, ChoiceOption, NumericOption, BoolOption, DataOption, FileOption, TextOption
 from quantiphyse.gui.widgets import QpWidget, TitleWidget, Citation, RunWidget, MultiExpander, FslDirWidget
