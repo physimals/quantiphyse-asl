@@ -434,13 +434,15 @@ class VeaslOptions(OxaslOptionWidget):
             veslocs, pis = [], []
             plds = self._data_widget.md.get("plds", self._data_widget.md.get("tis", []))
             for idx in range(1, len(plds)+1):
-                veslocs.append(self.ivm.extras.get("veasl_veslocs_pld%i" % idx, None))
-                pis.append(self.ivm.extras.get("veasl_pis_pld%i" % idx, None))
+                if "veasl_veslocs_pld%i" % idx in self.ivm.extras:
+                    veslocs.append(self.ivm.extras["veasl_veslocs_pld%i" % idx].arr)
+                if "veasl_pis_pld%i" % idx in self.ivm.extras:
+                    pis.append(self.ivm.extras["veasl_pis_pld%i" % idx].arr)
 
-            #if None not in veslocs:
-            self.vessels.inferred = veslocs[0]
-            #if None not in pis:
-            self.classlist.inferred_pis = np.array(pis).T
+            if veslocs:
+                self.vessels.inferred = veslocs[0]
+            if pis:
+                self.classlist.inferred_pis = np.array(pis[0]).T
 
 class AnalysisOptions(OxaslOptionWidget):
     """

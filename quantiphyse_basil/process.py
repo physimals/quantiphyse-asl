@@ -616,7 +616,7 @@ class OxaslProcess(LogProcess):
                 extension = parts[1]
             self.debug("Loading: %s (%s)", fname, extension)
             if extension == 'mat':
-                mat = load_matrix(fname)
+                mat, _rows, _cols = load_matrix(fname)
                 extra = MatrixExtra(name, mat)
                 self.ivm.add_extra(name, extra)
             elif extension == 'csv':
