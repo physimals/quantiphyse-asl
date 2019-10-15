@@ -124,8 +124,8 @@ class CalibrationOptions(OxaslOptionWidget):
         self.optbox.add("Calibration image", DataOption(self.ivm, explicit=True), key="calib") 
         self.optbox.add("Sequence TR (s)", NumericOption(minval=0, maxval=20, default=3.2, step=0.1, decimals=3), key="tr", checked=True)
         self.optbox.add("Sequence TE (ms)", NumericOption(minval=0, maxval=100, default=0, step=5, decimals=3), key="te", checked=True)
-        self.optbox.add("Calibration gain", NumericOption(minval=0, maxval=5, default=1, step=0.05, decimals=3), key="cgain", checked=True)
-        self.optbox.add("Inversion efficiency", NumericOption(minval=0, maxval=1, default=0.95, step=0.05, decimals=3), key="alpha", checked=True)  
+        self.optbox.add("Calibration gain", NumericOption(minval=0, maxval=5, default=1, step=0.05, decimals=3), key="calib_gain", checked=True)
+        self.optbox.add("Inversion efficiency", NumericOption(minval=0, maxval=1, default=0.95, step=0.05, decimals=3), key="calib_alpha", checked=True)  
         
         self.voxelwise_opts = OptionBox("Voxelwise calibration")
         self.voxelwise_opts.add("Tissue T1", NumericOption(minval=0, maxval=10, default=1.3, step=0.05, decimals=3), key="t1t", checked=True)
@@ -150,7 +150,7 @@ class CalibrationOptions(OxaslOptionWidget):
         method = self.optbox.option("calib_method").value
         self.voxelwise_opts.setVisible(method == "voxelwise")
         self.refregion_opts.setVisible(method == "single")
-        for opt in ("calib", "tr", "te", "cgain", "alpha"):
+        for opt in ("calib", "tr", "te", "calib_gain", "calib_alpha"):
             self.optbox.set_visible(opt, method is not None)
 
     def _ref_tiss_changed(self):
@@ -187,8 +187,8 @@ class CalibrationOptions(OxaslOptionWidget):
         """
         casl = md.get("casl", True)
         alpha = 0.95 if casl else 0.98
-        if "alpha" not in self.optbox.values():
-            self.optbox.option("alpha").value = alpha
+        if "calib_alpha" not in self.optbox.values():
+            self.optbox.option("calib_alpha").value = alpha
 
 class PreprocOptions(OxaslOptionWidget):
     """
