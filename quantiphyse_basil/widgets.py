@@ -17,7 +17,7 @@ from quantiphyse.utils import QpException
 from .aslimage_widget import AslImageWidget
 from .process import AslPreprocProcess, BasilProcess, AslCalibProcess, AslMultiphaseProcess
 
-from ._version import __version__
+from ._version import __version__, __license__
 
 # Default metadata for the multiphase widget
 DEFAULT_MULTIPHASE_METADATA = {
@@ -34,7 +34,7 @@ class AslPreprocWidget(QpWidget):
     Widget which lets you do basic preprocessing on ASL data
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL Preprocess", icon="asl.png", group="ASL", desc="Basic preprocessing on ASL data", version=__version__, **kwargs)
+        QpWidget.__init__(self, name="ASL Preprocess", icon="asl.png", group="ASL", desc="Basic preprocessing on ASL data", version=__version__, license=__license__, **kwargs)
         self.process = AslPreprocProcess(self.ivm)
         self.output_name_edited = False
 
@@ -141,7 +141,7 @@ class AslBasilWidget(QpWidget):
     Widget to do model fitting on ASL data
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL Model fitting", icon="asl.png", group="ASL", desc="Bayesian model fitting on ASL data", version=__version__, **kwargs)
+        QpWidget.__init__(self, name="ASL Model fitting", icon="asl.png", group="ASL", desc="Bayesian model fitting on ASL data", version=__version__, license=__license__, **kwargs)
         
     def init_ui(self):
         vbox = QtGui.QVBoxLayout()
@@ -240,7 +240,7 @@ class AslCalibWidget(QpWidget):
     Widget to do calibration on ASL data
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL Calibration", icon="asl.png", group="ASL", desc="Calibration of fitted ASL data", version=__version__, **kwargs)
+        QpWidget.__init__(self, name="ASL Calibration", icon="asl.png", group="ASL", desc="Calibration of fitted ASL data", version=__version__, license=__license__, **kwargs)
         
     def init_ui(self):
         vbox = QtGui.QVBoxLayout()
@@ -371,7 +371,7 @@ class AslMultiphaseWidget(QpWidget):
     Widget to do multiphase model fitting on ASL data
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="Multiphase ASL", icon="asl.png", group="ASL", desc="Bayesian Modelling for Multiphase Arterial Spin Labelling MRI", version=__version__, **kwargs)
+        QpWidget.__init__(self, name="Multiphase ASL", icon="asl.png", group="ASL", desc="Bayesian Modelling for Multiphase Arterial Spin Labelling MRI", version=__version__, license=__license__, **kwargs)
         
     def init_ui(self):
         vbox = QtGui.QVBoxLayout()

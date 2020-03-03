@@ -19,7 +19,7 @@ from quantiphyse.gui.widgets import QpWidget, TitleWidget, Citation, RunWidget, 
 from .aslimage_widget import AslImageWidget
 from .veasl_widgets import VeslocsWidget, EncodingWidget, PriorsWidget, ClasslistWidget, veslocs_default
 
-from ._version import __version__
+from ._version import __version__, __license__
 
 FAB_CITE_TITLE = "Variational Bayesian inference for a non-linear forward model"
 FAB_CITE_AUTHOR = "Chappell MA, Groves AR, Whitcher B, Woolrich MW."
@@ -525,7 +525,7 @@ class OxaslWidget(QpWidget):
     Widget to do ASL data processing
     """
     def __init__(self, **kwargs):
-        QpWidget.__init__(self, name="ASL data processing", icon="asl.png", group="ASL", desc="Complete data processing for ASL data", version=__version__, **kwargs)
+        QpWidget.__init__(self, name="ASL data processing", icon="asl.png", group="ASL", desc="Complete data processing for ASL data", version=__version__, license=__license__, **kwargs)
         
     def init_ui(self):
         vbox = QtGui.QVBoxLayout()
