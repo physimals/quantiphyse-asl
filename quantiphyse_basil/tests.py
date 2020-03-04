@@ -104,7 +104,7 @@ class AslPreprocWidgetTest(WidgetTest):
         # Check shape is as expected
         diffdata = self.ivm.data["data_4d_diff"]
         shape = list(self.data_4d.shape)
-        shape[3] = shape[3] / 2
+        shape[3] = int(shape[3] / 2)
         for idx, n in enumerate(shape):
             self.assertEqual(diffdata.raw().shape[idx], n)
 
@@ -161,7 +161,7 @@ class AslPreprocWidgetTest(WidgetTest):
         
         # Check data is as expected (differenced, then mean across repeats)
         meandata_test = np.zeros(shape)
-        diffdata_test = np.zeros(list(shape) + [self.data_4d.shape[3] / 2])
+        diffdata_test = np.zeros(list(shape) + [int(self.data_4d.shape[3] / 2)])
         for v in range(diffdata_test.shape[3]):
             diffdata_test[..., v] = self.data_4d[..., v*2+1] - self.data_4d[..., v*2]
         meandata_test = np.mean(diffdata_test, axis=-1)
@@ -202,14 +202,14 @@ class AslPreprocWidgetTest(WidgetTest):
         
         # Check data is as expected (all tags first, then all controls)
         reordered_test = np.zeros(shape)
-        for v in range(shape[3]/2):
+        for v in range(int(shape[3]/2)):
             reordered_test[..., v] = self.data_4d[..., 2*v]
-            reordered_test[..., v+shape[3]/2] = self.data_4d[..., 2*v+1]
+            reordered_test[..., v+int(shape[3]/2)] = self.data_4d[..., 2*v+1]
         self.assertTrue(np.allclose(reordered_test, reordered_data.raw()))
 
 class MultiphaseProcessTest(ProcessTest):
 
-    @unittest.skipIf("--fast" in sys.argv, "Slow test")
+    @unittest.skipIf("--test-fast" in sys.argv, "Slow test")
     def testJLarkin(self):
         """
         Test on James Larkin's multiphase data. Note that this data is not currently
@@ -239,7 +239,7 @@ class MultiphaseProcessTest(ProcessTest):
 
 class OxaslProcessTest(ProcessTest):
 
-    @unittest.skipIf("--fast" in sys.argv, "Slow test")
+    @unittest.skipIf("--test-fast" in sys.argv, "Slow test")
     def testFslCourse(self):
         """
         Basil BASIL process test. Note that this data is not currently
