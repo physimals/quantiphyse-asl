@@ -125,7 +125,7 @@ class CalibrationOptions(OxaslOptionWidget):
         self.optbox.add("Sequence TR (s)", NumericOption(minval=0, maxval=20, default=3.2, step=0.1, decimals=3), key="tr", checked=True)
         self.optbox.add("Sequence TE (ms)", NumericOption(minval=0, maxval=100, default=0, step=5, decimals=3), key="te", checked=True)
         self.optbox.add("Calibration gain", NumericOption(minval=0, maxval=5, default=1, step=0.05, decimals=3), key="calib_gain", checked=True)
-        self.optbox.add("Inversion efficiency", NumericOption(minval=0, maxval=1, default=0.95, step=0.05, decimals=3), key="calib_alpha", checked=True)  
+        self.optbox.add("Inversion efficiency", NumericOption(minval=0, maxval=1, default=0.85, step=0.05, decimals=3), key="calib_alpha", checked=True)  
         
         self.voxelwise_opts = OptionBox("Voxelwise calibration")
         self.voxelwise_opts.add("Tissue T1", NumericOption(minval=0, maxval=10, default=1.3, step=0.05, decimals=3), key="t1t", checked=True)
@@ -181,12 +181,12 @@ class CalibrationOptions(OxaslOptionWidget):
 
     def set_asldata_metadata(self, md):
         """
-        Set the inversion efficiency default to 0.98 for PASL, 0.95 for CASL
+        Set the inversion efficiency default to 0.98 for PASL, 0.85 for CASL
         unless the checkbox is ticked in which case the user has modified it
         manually - so leave it alone
         """
         casl = md.get("casl", True)
-        alpha = 0.95 if casl else 0.98
+        alpha = 0.85 if casl else 0.98
         if "calib_alpha" not in self.optbox.values():
             self.optbox.option("calib_alpha").value = alpha
 
