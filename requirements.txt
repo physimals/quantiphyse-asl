@@ -1,2 +1,5 @@
 oxasl
+oxasl_enable
+oxasl_mp
+oxasl_ve
 pyfab
