@@ -14,7 +14,8 @@ except ImportError:
     from PySide2 import QtGui, QtCore, QtWidgets
 
 from quantiphyse.gui.options import OptionBox, ChoiceOption, NumericOption, BoolOption, DataOption, FileOption, TextOption
-from quantiphyse.gui.widgets import QpWidget, TitleWidget, Citation, RunWidget, MultiExpander, FslDirWidget
+from quantiphyse.gui.widgets import QpWidget, TitleWidget, Citation, RunWidget, MultiExpander
+from quantiphyse.utils import get_plugins
 
 from .aslimage_widget import AslImageWidget
 from .veasl_widgets import VeslocsWidget, EncodingWidget, PriorsWidget, ClasslistWidget, veslocs_default
@@ -573,10 +574,12 @@ class OxaslWidget(QpWidget):
         vbox.addWidget(runbox)
         vbox.addStretch(1)
 
-        fsldir = FslDirWidget()
-        vbox.addWidget(fsldir)
-        #fsldir.sig_changed.connect(self._fsldir_changed)
-        #self._fsldir_changed(fsldir.fsldir)
+        fsldir_qwidgets = get_plugins("qwidgets", "FslDirWidget")
+        if len(fsldir_qwidgets) > 0:
+            fsldir = fsldir_qwidgets[0]()
+            vbox.addWidget(fsldir)
+            #fsldir.sig_changed.connect(self._fsldir_changed)
+            #self._fsldir_changed(fsldir.fsldir)
 
     def _data_changed(self):
         self._enable_tab("veasl", self.asldata.md["iaf"] == "ve")
