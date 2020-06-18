@@ -507,7 +507,7 @@ class OutputOptions(OxaslOptionWidget):
         self.optbox.add("Prefix for output data names", TextOption(), key="output-prefix", checked=True)
         self.optbox.add("Output in native (ASL) space", BoolOption(default=True), key="output_native")
         self.optbox.add("Output in structural space", BoolOption(), key="output_struc")
-        #self.optbox.add("Output in standard (MNI) space", BoolOption(), key="output-std")
+        self.optbox.add("Output in standard (MNI) space", BoolOption(), key="output_mni")
         self.optbox.add("")
         self.optbox.add("<b>Additional outputs</b>")
         self.optbox.add("Output parameter variance maps", BoolOption(), key="output_var")
