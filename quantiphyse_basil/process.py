@@ -361,7 +361,7 @@ class AslMultiphaseProcess(Script):
         else:
             template = BASIC_YAML
 
-        self._orig_roi = options.pop("roi", None)
+        self._orig_roi = options.pop("roi", "")
         template_params = {
             "data" : data.name,
             "roi" : self._orig_roi,
@@ -376,7 +376,8 @@ class AslMultiphaseProcess(Script):
 
     def finished(self, _):
         """ Called when process finishes """
-        self.ivm.set_current_roi(self._orig_roi)
+        if self._orig_roi:
+            self.ivm.set_current_roi(self._orig_roi)
         self.ivm.set_current_data("mean_mag")
 
 class AslCalibProcess(Process):
