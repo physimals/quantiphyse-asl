@@ -211,27 +211,24 @@ class AslPreprocWidgetTest(WidgetTest):
 class MultiphaseProcessTest(ProcessTest):
 
     @unittest.skipIf("--test-fast" in sys.argv, "Slow test")
-    def testJLarkin(self):
+    def testSimData(self):
         """
-        Test on James Larkin's multiphase data. Note that this data is not currently
-        bundled with Quantiphyse so test will fail if not present
+        Test on simulated multiphase data bundled with widget
         """
+        datafile = os.path.join(os.path.dirname(__file__), "mp_testdata.nii.gz")
         yaml = """
   - Load:
       data:
-        /home/ibmeuser/data/asl/jlarkin/TagDurations/TD=1.4/asl_phase_shifted_5_OPTIMAL/asl_phase_shifted_5.nii: multiphase_data
-      rois:
-        /home/ibmeuser/data/asl/jlarkin/TagDurations/TD=1.4/asl_phase_shifted_5_OPTIMAL/mask.nii.gz: multiphase_mask
+        %s: multiphase_data
 
   - AslMultiphase:
       data: multiphase_data
-      roi : multiphase_mask
       nphases: 8
       keep-temp: True
       sigma: 1
       n-supervoxels: 8
       compactness: 0.1
-"""
+""" % datafile
         self.run_yaml(yaml)
         self.assertEqual(self.status, Process.SUCCEEDED)
         self.assertTrue("mean_mag" in self.ivm.data)
