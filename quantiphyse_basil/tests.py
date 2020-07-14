@@ -4,6 +4,7 @@ Quantiphyse - Tests for ASL widgets
 Copyright (c) 2013-2018 University of Oxford
 """
 import sys
+import os
 import unittest 
 
 import numpy as np
@@ -245,10 +246,11 @@ class OxaslProcessTest(ProcessTest):
         Basil BASIL process test. Note that this data is not currently
         bundled with Quantiphyse so test will fail if not present
         """
+        datafile = os.path.join(os.path.dirname(__file__), "asl_testdata.nii.gz")
         yaml = """
   - Load:
       data:
-        /mnt/hgfs/win/data/asl/fsl_course/mpld_asltc.nii.gz: asldata
+        %s: asldata
 
   - Oxasl:
       data: asldata
@@ -260,7 +262,7 @@ class OxaslProcessTest(ProcessTest):
       infertiss: True
       inferbat: True
       output_native: True
-"""
+""" % datafile
         self.run_yaml(yaml)
         self.assertEqual(self.status, Process.SUCCEEDED)
         self.assertTrue("perfusion_native" in self.ivm.data)

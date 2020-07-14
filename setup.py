@@ -79,7 +79,7 @@ def get_package_data(rootdir):
     Get extra data files to install into the package, e.g. icons
     """
     return {
-        MODULE : glob.glob("%s/*.png" % MODULE) + glob.glob("%s/*.svg" % MODULE)
+        MODULE : glob.glob("%s/*.png" % MODULE) + glob.glob("%s/*.svg" % MODULE) + glob.glob("%s/*.nii.gz" % MODULE)
     }
 
 module_dir = os.path.abspath(os.path.dirname(__file__))
