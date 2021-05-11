@@ -494,6 +494,7 @@ class OxaslProcess(LogProcess):
         self._reportdir = options.pop("report", None)
         self._expected_output = options.pop("output", {})
         self._output_prefix = options.pop("output-prefix", "")
+        self._pvcorr = options.get("pvcorr", False)
 
         oxasl_options = {
             "debug" : self.debug_enabled(),
@@ -549,7 +550,10 @@ class OxaslProcess(LogProcess):
                 self._load_expected_output(self._tempdir, path, name)
 
             # Load 'default' output
-            self._load_default_output(os.path.join(self._tempdir, "output"))
+            if self._pvcorr:
+                self._load_default_output(os.path.join(self._tempdir, "output_pvcorr"))
+            else:
+                self._load_default_output(os.path.join(self._tempdir, "output"))
             self._load_default_output(os.path.join(self._tempdir, "corrected"), suffix="_corr")
             self._load_default_output(os.path.join(self._tempdir, "structural"), suffix="_struc")
             self._load_default_output(os.path.join(self._tempdir, "calibration"), suffix="_calib")
