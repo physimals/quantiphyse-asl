@@ -10,10 +10,7 @@ import traceback
 
 import numpy as np
 
-try:
-    from PySide import QtGui, QtCore, QtGui as QtWidgets
-except ImportError:
-    from PySide2 import QtGui, QtCore, QtWidgets
+from PySide2 import QtGui, QtCore, QtWidgets
 
 import pyqtgraph as pg
 
@@ -27,36 +24,36 @@ veslocs_default = np.array([
     [1.0000000e+01, 1.0000000e+01, -1.0000000e+01, -1.0000000e+01,],
 ], dtype=np.float)   
 
-class EncodingWidget(QtGui.QWidget):
+class EncodingWidget(QtWidgets.QWidget):
     """
     Widget which displays the encoding setup in MAC and TWO forms and keeps the two in sync
     """
 
     def __init__(self, *args, **kwargs):
-        QtGui.QWidget.__init__(self, *args, **kwargs)
+        QtWidgets.QWidget.__init__(self, *args, **kwargs)
         self._veslocs = None
         self._nenc = 0
         self._updating = False
         self.imlist = None
 
-        vbox = QtGui.QVBoxLayout()
+        vbox = QtWidgets.QVBoxLayout()
         self.setLayout(vbox)
 
-        hbox = QtGui.QHBoxLayout()
-        self.auto_combo = QtGui.QComboBox()
+        hbox = QtWidgets.QHBoxLayout()
+        self.auto_combo = QtWidgets.QComboBox()
         self.auto_combo.addItem("Automatic (vessels are RC, LC, RV, LV brain arteries)")
         self.auto_combo.addItem("Custom")
         self.auto_combo.currentIndexChanged.connect(self._auto_changed)
         hbox.addWidget(self.auto_combo)
 
-        self.mode_combo = QtGui.QComboBox()
+        self.mode_combo = QtWidgets.QComboBox()
         self.mode_combo.addItem("TWO specification")
         self.mode_combo.addItem("MAC specification")
         self.mode_combo.currentIndexChanged.connect(self._mode_changed)
         hbox.addWidget(self.mode_combo)
         vbox.addLayout(hbox)
 
-        self.warning = QtGui.QLabel()
+        self.warning = QtWidgets.QLabel()
         self.warning.setVisible(False)
         vbox.addWidget(self.warning)
 
@@ -163,14 +160,14 @@ class EncodingWidget(QtGui.QWidget):
             finally:
                 self._updating = False
 
-class PriorsWidget(QtGui.QWidget):
+class PriorsWidget(QtWidgets.QWidget):
     """
     Widget providing priors options
     """
 
     def __init__(self, *args, **kwargs):
-        QtGui.QWidget.__init__(self, *args, **kwargs)
-        vbox = QtGui.QVBoxLayout()
+        QtWidgets.QWidget.__init__(self, *args, **kwargs)
+        vbox = QtWidgets.QVBoxLayout()
         self.setLayout(vbox)
 
         self.optbox = OptionBox()
@@ -194,7 +191,7 @@ class PriorsWidget(QtGui.QWidget):
         """ :return: options as dictionary """
         return self.optbox.values()
 
-class VeslocsWidget(QtGui.QWidget):
+class VeslocsWidget(QtWidgets.QWidget):
     """
     Widget for setting initial vessel locations and viewing inferred locations
     """
@@ -202,17 +199,17 @@ class VeslocsWidget(QtGui.QWidget):
     sig_initial_changed = QtCore.Signal(object)
 
     def __init__(self, *args, **kwargs):
-        QtGui.QWidget.__init__(self, *args, **kwargs)
+        QtWidgets.QWidget.__init__(self, *args, **kwargs)
 
-        grid = QtGui.QGridLayout()
+        grid = QtWidgets.QGridLayout()
         self.setLayout(grid)
 
-        grid.addWidget(QtGui.QLabel("Initial"), 0, 0)
+        grid.addWidget(QtWidgets.QLabel("Initial"), 0, 0)
         self.vessels_initial = NumberGrid([[], []], row_headers=["X", "Y"], expandable=(True, False), fix_height=True)
         self.vessels_initial.sig_changed.connect(self._initial_vessels_changed)
         grid.addWidget(self.vessels_initial, 1, 0)
 
-        grid.addWidget(QtGui.QLabel("Inferred"), 2, 0)
+        grid.addWidget(QtWidgets.QLabel("Inferred"), 2, 0)
         self.vessels_inferred = NumberGrid([[], []], row_headers=["X", "Y"], expandable=(True, False), fix_height=True)
         self.vessels_inferred.sig_changed.connect(self._inferred_vessels_changed)
         grid.addWidget(self.vessels_inferred, 3, 0) 

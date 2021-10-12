@@ -6,10 +6,8 @@ Copyright (c) 2013-2018 University of Oxford
 
 from __future__ import division, unicode_literals, absolute_import
 
-try:
-    from PySide import QtGui, QtCore, QtGui as QtWidgets
-except ImportError:
-    from PySide2 import QtGui, QtCore, QtWidgets
+
+from PySide2 import QtGui, QtCore, QtWidgets
 
 from quantiphyse.gui.widgets import QpWidget, RoiCombo, OverlayCombo, Citation, TitleWidget, ChoiceOption, NumericOption, RunBox
 from quantiphyse.utils import QpException
@@ -39,7 +37,7 @@ class AslPreprocWidget(QpWidget):
         self.output_name_edited = False
 
     def init_ui(self):
-        vbox = QtGui.QVBoxLayout()
+        vbox = QtWidgets.QVBoxLayout()
         self.setLayout(vbox)
 
         title = TitleWidget(self, help="asl", subtitle="Basic preprocessing of ASL data")
@@ -49,37 +47,37 @@ class AslPreprocWidget(QpWidget):
         self.aslimage_widget.data_combo.currentIndexChanged.connect(self._data_changed)
         vbox.addWidget(self.aslimage_widget)
 
-        preproc_box = QtGui.QGroupBox("Preprocessing Options")
-        grid = QtGui.QGridLayout()
+        preproc_box = QtWidgets.QGroupBox("Preprocessing Options")
+        grid = QtWidgets.QGridLayout()
         preproc_box.setLayout(grid)
 
-        self.sub_cb = QtGui.QCheckBox("Label-control subtraction")
+        self.sub_cb = QtWidgets.QCheckBox("Label-control subtraction")
         self.sub_cb.stateChanged.connect(self._guess_output_name)
         grid.addWidget(self.sub_cb, 4, 0)
         
-        self.reorder_cb = QtGui.QCheckBox("Reordering")
+        self.reorder_cb = QtWidgets.QCheckBox("Reordering")
         grid.addWidget(self.reorder_cb, 5, 0)
-        self.new_order = QtGui.QLineEdit()
+        self.new_order = QtWidgets.QLineEdit()
         self.new_order.setEnabled(False)
         self.reorder_cb.stateChanged.connect(self.new_order.setEnabled)
         self.reorder_cb.stateChanged.connect(self._guess_output_name)
         grid.addWidget(self.new_order, 5, 1)
         
-        self.mean_cb = QtGui.QCheckBox("Average data")
+        self.mean_cb = QtWidgets.QCheckBox("Average data")
         grid.addWidget(self.mean_cb, 6, 0)
-        self.mean_combo = QtGui.QComboBox()
+        self.mean_combo = QtWidgets.QComboBox()
         self.mean_combo.addItem("Mean across repeats")
         self.mean_combo.addItem("Perfusion-weighted image")
         grid.addWidget(self.mean_combo, 6, 1)
         self.mean_cb.stateChanged.connect(self.mean_combo.setEnabled)
         self.mean_cb.stateChanged.connect(self._guess_output_name)
         
-        grid.addWidget(QtGui.QLabel("Output name"), 7, 0)
-        self.output_name = QtGui.QLineEdit()
+        grid.addWidget(QtWidgets.QLabel("Output name"), 7, 0)
+        self.output_name = QtWidgets.QLineEdit()
         self.output_name.editingFinished.connect(self._output_name_changed)
         grid.addWidget(self.output_name, 7, 1)
         
-        self.run_btn = QtGui.QPushButton("Run")
+        self.run_btn = QtWidgets.QPushButton("Run")
         self.run_btn.clicked.connect(self.run)
         grid.addWidget(self.run_btn, 8, 0)
 
@@ -144,14 +142,14 @@ class AslBasilWidget(QpWidget):
         QpWidget.__init__(self, name="ASL Model fitting", icon="asl.png", group="ASL", desc="Bayesian model fitting on ASL data", version=__version__, license=__license__, **kwargs)
         
     def init_ui(self):
-        vbox = QtGui.QVBoxLayout()
+        vbox = QtWidgets.QVBoxLayout()
         self.setLayout(vbox)
 
         try:
             self.process = BasilProcess(self.ivm)
         except QpException as e:
             self.process = None
-            vbox.addWidget(QtGui.QLabel(str(e)))
+            vbox.addWidget(QtWidgets.QLabel(str(e)))
             return
         
         title = TitleWidget(self, help="asl", subtitle="Bayesian Modelling for Arterial Spin Labelling MRI")
@@ -160,21 +158,21 @@ class AslBasilWidget(QpWidget):
         cite = Citation(FAB_CITE_TITLE, FAB_CITE_AUTHOR, FAB_CITE_JOURNAL)
         vbox.addWidget(cite)
 
-        self.tabs = QtGui.QTabWidget()
+        self.tabs = QtWidgets.QTabWidget()
         vbox.addWidget(self.tabs)
 
         self.aslimage_widget = AslImageWidget(self.ivm, parent=self)
         self.aslimage_widget.data_combo.currentIndexChanged.connect(self._data_changed)
         self.tabs.addTab(self.aslimage_widget, "Data Structure")
 
-        analysis_tab = QtGui.QWidget()
-        grid = QtGui.QGridLayout()
+        analysis_tab = QtWidgets.QWidget()
+        grid = QtWidgets.QGridLayout()
         analysis_tab.setLayout(grid)
 
-        #grid.addWidget(QtGui.QLabel("Output name"), 0, 0)
-        #self.output_name_edit = QtGui.QLineEdit()
+        #grid.addWidget(QtWidgets.QLabel("Output name"), 0, 0)
+        #self.output_name_edit = QtWidgets.QLineEdit()
         #grid.addWidget(self.output_name_edit, 0, 1)
-        grid.addWidget(QtGui.QLabel("Mask"), 1, 0)
+        grid.addWidget(QtWidgets.QLabel("Mask"), 1, 0)
         self.roi_combo = RoiCombo(self.ivm)
         grid.addWidget(self.roi_combo, 1, 1)
 
@@ -182,15 +180,15 @@ class AslBasilWidget(QpWidget):
         self.t1 = NumericOption("T1 (s)", grid, ypos=2, xpos=3, default=1.3, decimals=2)
         self.t1b = NumericOption("T1b (s)", grid, ypos=3, xpos=3, default=1.65, decimals=2)
 
-        self.spatial_cb = QtGui.QCheckBox("Spatial regularization")
+        self.spatial_cb = QtWidgets.QCheckBox("Spatial regularization")
         grid.addWidget(self.spatial_cb, 4, 0, 1, 2)
-        self.fixtau_cb = QtGui.QCheckBox("Fix bolus duration")
+        self.fixtau_cb = QtWidgets.QCheckBox("Fix bolus duration")
         grid.addWidget(self.fixtau_cb, 4, 2, 1, 2)
-        self.t1_cb = QtGui.QCheckBox("Allow uncertainty in T1 values")
+        self.t1_cb = QtWidgets.QCheckBox("Allow uncertainty in T1 values")
         grid.addWidget(self.t1_cb, 5, 0, 1, 2)
-        #self.pvc_cb = QtGui.QCheckBox("Partial volume correction")
+        #self.pvc_cb = QtWidgets.QCheckBox("Partial volume correction")
         #grid.addWidget(self.pvc_cb, 5, 2, 1, 2)
-        self.mv_cb = QtGui.QCheckBox("Include macro vascular component")
+        self.mv_cb = QtWidgets.QCheckBox("Include macro vascular component")
         grid.addWidget(self.mv_cb, 6, 0, 1, 2)
 
         grid.setRowStretch(7, 1)
@@ -243,21 +241,21 @@ class AslCalibWidget(QpWidget):
         QpWidget.__init__(self, name="ASL Calibration", icon="asl.png", group="ASL", desc="Calibration of fitted ASL data", version=__version__, license=__license__, **kwargs)
         
     def init_ui(self):
-        vbox = QtGui.QVBoxLayout()
+        vbox = QtWidgets.QVBoxLayout()
         self.setLayout(vbox)
         
         title = TitleWidget(self, help="asl", subtitle="ASL calibration")
         vbox.addWidget(title)
               
-        self.data_box = QtGui.QGroupBox("Data to calibrate")
-        grid = QtGui.QGridLayout()
-        grid.addWidget(QtGui.QLabel("Data"), 0, 0)
+        self.data_box = QtWidgets.QGroupBox("Data to calibrate")
+        grid = QtWidgets.QGridLayout()
+        grid.addWidget(QtWidgets.QLabel("Data"), 0, 0)
         self.data = OverlayCombo(self.ivm)
         grid.addWidget(self.data, 0, 1)
         self.data_type = ChoiceOption("Data type", grid, ypos=1, choices=["Perfusion", "Perfusion variance"])
         self.data_box.setLayout(grid)
 
-        grid.addWidget(QtGui.QLabel("Data ROI"), 2, 0)
+        grid.addWidget(QtWidgets.QLabel("Data ROI"), 2, 0)
         self.roi = RoiCombo(self.ivm)
         grid.addWidget(self.roi, 2, 1)
 
@@ -265,11 +263,11 @@ class AslCalibWidget(QpWidget):
         vbox.addWidget(self.data_box)
         # TODO calibrate multiple data sets
 
-        calib_box = QtGui.QGroupBox("Calibration Data")
-        grid = QtGui.QGridLayout()
+        calib_box = QtWidgets.QGroupBox("Calibration Data")
+        grid = QtWidgets.QGridLayout()
         calib_box.setLayout(grid)
 
-        grid.addWidget(QtGui.QLabel("Calibration image"), 0, 0)
+        grid.addWidget(QtWidgets.QLabel("Calibration image"), 0, 0)
         self.calib_img = OverlayCombo(self.ivm)
         grid.addWidget(self.calib_img, 0, 1)
 
@@ -280,21 +278,21 @@ class AslCalibWidget(QpWidget):
         
         vbox.addWidget(calib_box)
 
-        self.voxelwise_box = QtGui.QGroupBox("Voxelwise calibration")
-        grid = QtGui.QGridLayout()
+        self.voxelwise_box = QtWidgets.QGroupBox("Voxelwise calibration")
+        grid = QtWidgets.QGridLayout()
         self.t1t = NumericOption("Tissue T1", grid, ypos=0, minval=0, maxval=10, default=1.3, step=0.05)
         self.pct = NumericOption("Tissue partition coefficient", grid, ypos=1, minval=0, maxval=5, default=0.9, step=0.05)
         self.voxelwise_box.setLayout(grid)
         vbox.addWidget(self.voxelwise_box)
 
-        self.refregion_box = QtGui.QGroupBox("Reference region calibration")
+        self.refregion_box = QtWidgets.QGroupBox("Reference region calibration")
         # TODO switch T1/T2/PC defaults on tissue type
-        grid = QtGui.QGridLayout()
+        grid = QtWidgets.QGridLayout()
         self.refregion_box.setLayout(grid)
         self.ref_type = ChoiceOption("Reference type", grid, ypos=0, choices=["CSF", "WM", "GM", "Custom"])
         self.ref_type.combo.currentIndexChanged.connect(self._ref_tiss_changed)
 
-        grid.addWidget(QtGui.QLabel("Reference ROI"), 1, 0)
+        grid.addWidget(QtWidgets.QLabel("Reference ROI"), 1, 0)
         self.ref_roi = RoiCombo(self.ivm)
         grid.addWidget(self.ref_roi, 1, 1)
         # TODO pick specific region of ROI
@@ -374,14 +372,14 @@ class AslMultiphaseWidget(QpWidget):
         QpWidget.__init__(self, name="Multiphase ASL", icon="asl.png", group="ASL", desc="Bayesian Modelling for Multiphase Arterial Spin Labelling MRI", version=__version__, license=__license__, **kwargs)
         
     def init_ui(self):
-        vbox = QtGui.QVBoxLayout()
+        vbox = QtWidgets.QVBoxLayout()
         self.setLayout(vbox)
 
         try:
             self.process = BasilProcess(self.ivm)
         except QpException as e:
             self.process = None
-            vbox.addWidget(QtGui.QLabel(str(e)))
+            vbox.addWidget(QtWidgets.QLabel(str(e)))
             return
         
         title = TitleWidget(self, help="asl", subtitle="Bayesian pre-processing for Multiphase Arterial Spin Labelling MRI")
@@ -390,25 +388,25 @@ class AslMultiphaseWidget(QpWidget):
         cite = Citation(FAB_CITE_TITLE, FAB_CITE_AUTHOR, FAB_CITE_JOURNAL)
         vbox.addWidget(cite)
 
-        self.tabs = QtGui.QTabWidget()
+        self.tabs = QtWidgets.QTabWidget()
         vbox.addWidget(self.tabs)
 
         self.aslimage_widget = AslImageWidget(self.ivm, default_metadata=DEFAULT_MULTIPHASE_METADATA)
         self.aslimage_widget.sig_changed.connect(self._aslimage_changed)
         self.tabs.addTab(self.aslimage_widget, "ASL data")
 
-        analysis_tab = QtGui.QWidget()
-        grid = QtGui.QGridLayout()
+        analysis_tab = QtWidgets.QWidget()
+        grid = QtWidgets.QGridLayout()
         analysis_tab.setLayout(grid)
 
-        #grid.addWidget(QtGui.QLabel("Output name"), 0, 0)
-        #self.output_name_edit = QtGui.QLineEdit()
+        #grid.addWidget(QtWidgets.QLabel("Output name"), 0, 0)
+        #self.output_name_edit = QtWidgets.QLineEdit()
         #grid.addWidget(self.output_name_edit, 0, 1)
-        grid.addWidget(QtGui.QLabel("Mask"), 1, 0)
+        grid.addWidget(QtWidgets.QLabel("Mask"), 1, 0)
         self.roi = RoiCombo(self.ivm)
         grid.addWidget(self.roi, 1, 1)
 
-        self.biascorr_cb = QtGui.QCheckBox("Apply bias correction")
+        self.biascorr_cb = QtWidgets.QCheckBox("Apply bias correction")
         self.biascorr_cb.setChecked(True)
         self.biascorr_cb.stateChanged.connect(self._biascorr_changed)
         grid.addWidget(self.biascorr_cb, 2, 0)
@@ -416,7 +414,7 @@ class AslMultiphaseWidget(QpWidget):
         self.num_sv = NumericOption("Number of supervoxels", grid, ypos=3, intonly=True, minval=1, default=8)
         self.sigma = NumericOption("Supervoxel pre-smoothing (mm)", grid, ypos=4, minval=0, default=0.5, decimals=1, step=0.1)
         self.compactness = NumericOption("Supervoxel compactness", grid, ypos=5, minval=0, default=0.1, decimals=2, step=0.05)
-        self.verbose_cb = QtGui.QCheckBox("Keep interim results")
+        self.verbose_cb = QtWidgets.QCheckBox("Keep interim results")
         grid.addWidget(self.verbose_cb, 6, 0)
 
         grid.setRowStretch(7, 1)

@@ -8,10 +8,7 @@ from __future__ import division, unicode_literals, absolute_import
 
 import numpy as np
 
-try:
-    from PySide import QtGui, QtCore, QtGui as QtWidgets
-except ImportError:
-    from PySide2 import QtGui, QtCore, QtWidgets
+from PySide2 import QtGui, QtCore, QtWidgets
 
 from quantiphyse.gui.options import OptionBox, ChoiceOption, NumericOption, BoolOption, DataOption, FileOption, TextOption
 from quantiphyse.gui.widgets import QpWidget, TitleWidget, Citation, RunWidget, MultiExpander
@@ -26,15 +23,15 @@ FAB_CITE_TITLE = "Variational Bayesian inference for a non-linear forward model"
 FAB_CITE_AUTHOR = "Chappell MA, Groves AR, Whitcher B, Woolrich MW."
 FAB_CITE_JOURNAL = "IEEE Transactions on Signal Processing 57(1):223-236, 2009."
 
-class OxaslOptionWidget(QtGui.QWidget):
+class OxaslOptionWidget(QtWidgets.QWidget):
     """
     Base class for a widget which provides options for OXASL
     """
     def __init__(self, ivm=None):
-        QtGui.QWidget.__init__(self)
+        QtWidgets.QWidget.__init__(self)
         self.ivm = ivm
 
-        self.vbox = QtGui.QVBoxLayout()
+        self.vbox = QtWidgets.QVBoxLayout()
         self.setLayout(self.vbox)
 
         if hasattr(self, "CITE"):
@@ -282,8 +279,8 @@ class EnableOptions(OxaslOptionWidget):
         self.optbox.add("Custom grey matter ROI", DataOption(self.ivm, rois=True, data=False, explicit=True), checked=True, key="gm_roi")
         self.optbox.add("Custom noise ROI", DataOption(self.ivm, rois=True, data=False, explicit=True), checked=True, key="noise_roi")
 
-        self.vbox.addWidget(QtGui.QLabel("Quality measures"))
-        self.qms_table = QtGui.QTableView()
+        self.vbox.addWidget(QtWidgets.QLabel("Quality measures"))
+        self.qms_table = QtWidgets.QTableView()
         self.qms_table.setModel(self.qms_model)
         self.vbox.addWidget(self.qms_table)
 
@@ -529,7 +526,7 @@ class OxaslWidget(QpWidget):
         QpWidget.__init__(self, name="ASL data processing", icon="asl.png", group="ASL", desc="Complete data processing for ASL data", version=__version__, license=__license__, **kwargs)
         
     def init_ui(self):
-        vbox = QtGui.QVBoxLayout()
+        vbox = QtWidgets.QVBoxLayout()
         self.setLayout(vbox)
         
         title = TitleWidget(self, help="asl", subtitle="Data processing for Arterial Spin Labelling MRI")
@@ -538,7 +535,7 @@ class OxaslWidget(QpWidget):
         cite = Citation(FAB_CITE_TITLE, FAB_CITE_AUTHOR, FAB_CITE_JOURNAL)
         vbox.addWidget(cite)
 
-        self.tabs = QtGui.QTabWidget()
+        self.tabs = QtWidgets.QTabWidget()
         vbox.addWidget(self.tabs)
 
         self.asldata = AslImageWidget(self.ivm, parent=self)

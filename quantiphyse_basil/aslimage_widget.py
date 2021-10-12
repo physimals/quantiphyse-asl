@@ -13,10 +13,7 @@ import traceback
 import numpy as np
 import scipy
 
-try:
-    from PySide import QtGui, QtCore, QtGui as QtWidgets
-except ImportError:
-    from PySide2 import QtGui, QtCore, QtWidgets
+from PySide2 import QtGui, QtCore, QtWidgets
 
 from quantiphyse.gui.widgets import OverlayCombo, ChoiceOption, NumericOption, OrderList, OrderListButtons, WarningBox
 import quantiphyse.gui.options as opt
@@ -135,12 +132,12 @@ def get_order_string(md):
     _, order, _ = data_order(md.get("iaf", None), md.get("ibf", None), md.get("order", None))
     return order
 
-class DataStructure(QtGui.QWidget, AslMetadataView):
+class DataStructure(QtWidgets.QWidget, AslMetadataView):
     """
     Visual preview of the structure of an ASL data set
     """
     def __init__(self, grid, ypos):
-        QtGui.QWidget.__init__(self)
+        QtWidgets.QWidget.__init__(self)
         AslMetadataView.__init__(self)
         self.hfactor = 0.95
         self.vfactor = 0.95
@@ -220,7 +217,7 @@ class DataStructure(QtGui.QWidget, AslMetadataView):
                     p.drawText(ox, oy, 2*w-1, height, QtCore.Qt.AlignHCenter, label)
                     self._draw_groups(p, groups[1:], ox, oy+height, 2*w, height)
 
-class SignalPreview(QtGui.QWidget):
+class SignalPreview(QtWidgets.QWidget):
     """
     Visual preview of the signal expected from an ASL data set
     """
@@ -228,7 +225,7 @@ class SignalPreview(QtGui.QWidget):
     VFACTOR = 0.95
 
     def __init__(self):
-        QtGui.QWidget.__init__(self)
+        QtWidgets.QWidget.__init__(self)
         self._order = "lrt"
         self._num = {"l" : 2, "r" : 1, "t" : 1}
         self._md = None
@@ -277,7 +274,7 @@ class SignalPreview(QtGui.QWidget):
         h, w = self.height(), self.width()
         ox = w*(1-self.HFACTOR)/2
         oy = h*(1-self.VFACTOR)/2
-        p = QtGui.QPainter(self)
+        p = QtGui.QtWidgets(self)
         p.drawLine(0, h-1, 0, 0)
         p.drawLine(0, h-1, w-1, h-1)
         if self._data is not None:
@@ -343,7 +340,7 @@ class SignalView(QtCore.QObject, AslMetadataView):
         QtCore.QObject.__init__(self)
         AslMetadataView.__init__(self)
         self.preview = SignalPreview()
-        label = QtGui.QLabel("Signal fit\nGreen=data\nRed=prediction")
+        label = QtWidgets.QLabel("Signal fit\nGreen=data\nRed=prediction")
         label.setWordWrap(True)
         grid.addWidget(label, ypos, 0, alignment=QtCore.Qt.AlignTop)
         grid.addWidget(self.preview, ypos, 1, 1, 2)
@@ -415,7 +412,7 @@ class DataOrdering(QtCore.QObject, AslMetadataView):
     def __init__(self, grid, ypos):
         QtCore.QObject.__init__(self)
         AslMetadataView.__init__(self)
-        grid.addWidget(QtGui.QLabel("Data grouping"), ypos, 0, alignment=QtCore.Qt.AlignTop)
+        grid.addWidget(QtWidgets.QLabel("Data grouping"), ypos, 0, alignment=QtCore.Qt.AlignTop)
         self.group_list = OrderList()
         grid.addWidget(self.group_list, ypos, 1)
         self.list_btns = OrderListButtons(self.group_list)
@@ -449,15 +446,15 @@ class BlockFormat(QtCore.QObject, AslMetadataView):
     def __init__(self, grid, ypos):
         QtCore.QObject.__init__(self)
         AslMetadataView.__init__(self)
-        grid.addWidget(QtGui.QLabel("Data grouped by"), ypos, 0)
-        hbox = QtGui.QHBoxLayout()
+        grid.addWidget(QtWidgets.QLabel("Data grouped by"), ypos, 0)
+        hbox = QtWidgets.QHBoxLayout()
         self.choice = opt.ChoiceOption(["TIs", "Repeats", "Custom"], ["tis", "rpt", "custom"])
         hbox.addWidget(self.choice)
-        self.order_edit = QtGui.QLineEdit()
+        self.order_edit = QtWidgets.QLineEdit()
         hbox.addWidget(self.order_edit)
         self.order_edit.setVisible(False)
         grid.addLayout(hbox, ypos, 1)
-        self.detect_btn = QtGui.QPushButton("Auto detect")
+        self.detect_btn = QtWidgets.QPushButton("Auto detect")
         grid.addWidget(self.detect_btn, ypos, 2)
 
         self.choice.sig_changed.connect(self._changed)
@@ -522,7 +519,7 @@ class LabelType(ChoiceOption, AslMetadataView):
     def __init__(self, grid, ypos):
         self._indexes = ["tc", "ct", "diff", "ve", "mp"]
         ChoiceOption.__init__(self, "Data format", grid, ypos, choices=["Label-control pairs", "Control-Label pairs", "Already subtracted", "Vessel encoded", "Multiphase"])
-        self.pwi_btn = QtGui.QPushButton("Generate PWI")
+        self.pwi_btn = QtWidgets.QPushButton("Generate PWI")
         self.pwi_btn.setToolTip("Generate a perfusion-weighted image by performing label-control subtraction and averaging")
         self.pwi_btn.clicked.connect(self._pwi)
         grid.addWidget(self.pwi_btn, ypos, 2)
@@ -637,14 +634,14 @@ class Multiband(QtCore.QObject, AslMetadataView):
 
     def __init__(self, grid, ypos):
         QtCore.QObject.__init__(self)
-        self.cb = QtGui.QCheckBox("Multiband")
+        self.cb = QtWidgets.QCheckBox("Multiband")
         grid.addWidget(self.cb, ypos, 0)
-        hbox = QtGui.QHBoxLayout()
-        self.slices_per_band = QtGui.QSpinBox()
+        hbox = QtWidgets.QHBoxLayout()
+        self.slices_per_band = QtWidgets.QSpinBox()
         self.slices_per_band.setMinimum(1)
         self.slices_per_band.setValue(5)
         hbox.addWidget(self.slices_per_band)
-        self.slices_per_band_lbl = QtGui.QLabel("slices per band")
+        self.slices_per_band_lbl = QtWidgets.QLabel("slices per band")
         hbox.addWidget(self.slices_per_band_lbl)
         grid.addLayout(hbox, ypos, 1)
 
@@ -706,8 +703,8 @@ class Times(QtCore.QObject, AslMetadataView):
     """
     def __init__(self, grid, ypos):
         QtCore.QObject.__init__(self)
-        self._label = QtGui.QLabel(TIMING_LABELS[True])
-        self._edit = QtGui.QLineEdit()
+        self._label = QtWidgets.QLabel(TIMING_LABELS[True])
+        self._edit = QtWidgets.QLineEdit()
         self._edit.editingFinished.connect(self._edit_changed)
         grid.addWidget(self._label, ypos, 0)
         grid.addWidget(self._edit, ypos, 1)
@@ -744,8 +741,8 @@ class BolusDurations(QtCore.QObject, AslMetadataView):
     """
     def __init__(self, grid, ypos):
         QtCore.QObject.__init__(self)
-        self._label = QtGui.QLabel("Bolus duration (s)")
-        self._edit = QtGui.QLineEdit()
+        self._label = QtWidgets.QLabel("Bolus duration (s)")
+        self._edit = QtWidgets.QLineEdit()
         self._edit.editingFinished.connect(self._edit_changed)
         grid.addWidget(self._label, ypos, 0)
         grid.addWidget(self._edit, ypos, 1)
@@ -773,8 +770,8 @@ class VariableRepeats(QtCore.QObject, AslMetadataView):
     """
     def __init__(self, grid, ypos):
         QtCore.QObject.__init__(self)
-        self._label = QtGui.QLabel("Repeats")
-        self._edit = QtGui.QLineEdit()
+        self._label = QtWidgets.QLabel("Repeats")
+        self._edit = QtWidgets.QLineEdit()
         self._edit.editingFinished.connect(self._edit_changed)
         grid.addWidget(self._label, ypos, 0)
         grid.addWidget(self._edit, ypos, 1)
@@ -800,7 +797,7 @@ class VariableRepeats(QtCore.QObject, AslMetadataView):
             self._edit.setStyleSheet("QLineEdit {background-color: red}")
         self.sig_md_changed.emit(self)
 
-class AslImageWidget(QtGui.QWidget, LogSource):
+class AslImageWidget(QtWidgets.QWidget, LogSource):
     """
     QWidget which allows an ASL data set to be described
 
@@ -812,7 +809,7 @@ class AslImageWidget(QtGui.QWidget, LogSource):
 
     def __init__(self, ivm, parent=None, **kwargs):
         LogSource.__init__(self)
-        QtGui.QWidget.__init__(self, parent)
+        QtWidgets.QWidget.__init__(self, parent)
         self.ivm = ivm
         self.data = None
         self.default_md = kwargs.get("default_metadata", DEFAULT_METADATA)
@@ -820,12 +817,12 @@ class AslImageWidget(QtGui.QWidget, LogSource):
         self.aslimage = None
         self.valid = True
         
-        vbox = QtGui.QVBoxLayout()
+        vbox = QtWidgets.QVBoxLayout()
         self.setLayout(vbox)
 
-        grid = QtGui.QGridLayout()
+        grid = QtWidgets.QGridLayout()
 
-        grid.addWidget(QtGui.QLabel("ASL data"), 0, 0)
+        grid.addWidget(QtWidgets.QLabel("ASL data"), 0, 0)
         self.data_combo = OverlayCombo(self.ivm)
         self.data_combo.currentIndexChanged.connect(self._data_changed)
         grid.addWidget(self.data_combo, 0, 1)
@@ -844,10 +841,10 @@ class AslImageWidget(QtGui.QWidget, LogSource):
             view.sig_md_changed.connect(self._metadata_changed)
             self.views.append(view)
 
-        #grid.addWidget(QtGui.QLabel("Data order preview"), 5, 0)
+        #grid.addWidget(QtWidgets.QLabel("Data order preview"), 5, 0)
        
         # Code below is for specific multiple phases
-        #self.phases_lbl = QtGui.QLabel("Phases (\N{DEGREE SIGN})")
+        #self.phases_lbl = QtWidgets.QLabel("Phases (\N{DEGREE SIGN})")
         #grid.addWidget(self.phases_lbl, 3, 0)
         #self.phases_lbl.setVisible(False)
         #self.phases = NumberList([float(x)*360/8 for x in range(8)])
