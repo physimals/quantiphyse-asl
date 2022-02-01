@@ -274,7 +274,7 @@ class SignalPreview(QtWidgets.QWidget):
         h, w = self.height(), self.width()
         ox = w*(1-self.HFACTOR)/2
         oy = h*(1-self.VFACTOR)/2
-        p = QtGui.QtWidgets(self)
+        p = QtGui.QPainter(self)
         p.drawLine(0, h-1, 0, 0)
         p.drawLine(0, h-1, w-1, h-1)
         if self._data is not None:
