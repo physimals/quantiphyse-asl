@@ -217,7 +217,7 @@ class DataStructure(QtWidgets.QWidget, AslMetadataView):
                     p.drawText(ox, oy, 2*w-1, height, QtCore.Qt.AlignHCenter, label)
                     self._draw_groups(p, groups[1:], ox, oy+height, 2*w, height)
 
-class SignalPreview(QtWidgets.QWidget):
+class SignalPreview(QtWidgets.QWidget, LogSource):
     """
     Visual preview of the signal expected from an ASL data set
     """
@@ -225,6 +225,7 @@ class SignalPreview(QtWidgets.QWidget):
     VFACTOR = 0.95
 
     def __init__(self):
+        LogSource.__init__(self)
         QtWidgets.QWidget.__init__(self)
         self._order = "lrt"
         self._num = {"l" : 2, "r" : 1, "t" : 1}
@@ -312,9 +313,15 @@ class SignalPreview(QtWidgets.QWidget):
         if sigrange == 0:
             sigrange = 1
         initial = sigrange * np.arange(self._num["t"])[::-1] + sigmin
-        result = scipy.optimize.least_squares(self._sigdiff, initial)
-        self.fitted_signal = self._tdep_to_signal(result.x)
-        self.cost = result.cost
+        try:
+            result = scipy.optimize.least_squares(self._sigdiff, initial)
+            self.fitted_signal = self._tdep_to_signal(result.x)
+            self.cost = result.cost
+        except Exception as exc:
+            self.warn("Error optimizing least squares: %s" % exc)
+            self.warn("Initial values provided: %s" % initial)
+            self.fitted_signal = initial
+            self.cost = 0
 
     def _tdep_to_signal(self, tdep):
         vals = []
