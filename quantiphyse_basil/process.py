@@ -495,6 +495,7 @@ class OxaslProcess(LogProcess):
         self._expected_output = options.pop("output", {})
         self._output_prefix = options.pop("output-prefix", "")
         self._pvcorr = options.get("pvcorr", False)
+        self._save_nonpvc = options.pop("save_nonpvc", False)
 
         oxasl_options = {
             "debug" : self.debug_enabled(),
@@ -552,6 +553,8 @@ class OxaslProcess(LogProcess):
             # Load 'default' output
             if self._pvcorr:
                 self._load_default_output(os.path.join(self._tempdir, "output_pvcorr"))
+                if self._save_nonpvc:
+                    self._load_default_output(os.path.join(self._tempdir, "output"), suffix="_nopvc")
             else:
                 self._load_default_output(os.path.join(self._tempdir, "output"))
             self._load_default_output(os.path.join(self._tempdir, "corrected"), suffix="_corr")

@@ -508,6 +508,7 @@ class OutputOptions(OxaslOptionWidget):
         self.optbox.add("")
         self.optbox.add("<b>Additional outputs</b>")
         self.optbox.add("Output parameter variance maps", BoolOption(), key="output_var")
+        self.optbox.add("Output non-partial volume corrected results", BoolOption(), key="save_nonpvc")
         self.optbox.add("Output mask", BoolOption(default=True), key="save_mask")
         self.optbox.add("Output calibration data", BoolOption(), key="save_calib")
         self.optbox.add("Output corrected input data", BoolOption(), key="save_corrected")
