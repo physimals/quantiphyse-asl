@@ -22,7 +22,7 @@ from quantiphyse.gui.options import OptionBox, NumericOption
 veslocs_default = np.array([
     [1.0000000e+01, -1.0000000e+01, 1.0000000e+01, -1.0000000e+01,],
     [1.0000000e+01, 1.0000000e+01, -1.0000000e+01, -1.0000000e+01,],
-], dtype=np.float)   
+], dtype=np.float32)
 
 class EncodingWidget(QtWidgets.QWidget):
     """
